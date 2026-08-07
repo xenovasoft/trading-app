@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gold Signal Bot</title>
+<style>
+  :root {
+    --bg: #0b0d12;
+    --card: #151821;
+    --border: #262b38;
+    --text: #e6e9f0;
+    --dim: #8a90a2;
+    --green: #22c55e;
+    --red: #ef4444;
+    --gray: #6b7280;
+    --amber: #f59e0b;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, Helvetica, Arial, sans-serif;
+    padding: max(20px, env(safe-area-inset-top)) 16px calc(env(safe-area-inset-bottom) + 24px);
+  }
+  header {
+    padding: 20px 4px 12px;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+  header h1 { font-size: 19px; margin: 0; font-weight: 600; }
+  header .updated { font-size: 12px; color: var(--dim); }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+  @media (min-width: 700px) {
+    .grid { grid-template-columns: repeat(3, 1fr); }
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px;
+  }
+  .card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .asset-name { font-size: 16px; font-weight: 600; }
+  .price { font-size: 22px; font-weight: 700; margin: 2px 0 10px; font-variant-numeric: tabular-nums; }
+  .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+  .badge {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 9px;
+    border-radius: 999px;
+    letter-spacing: 0.02em;
+  }
+  .badge.buy, .badge.bullish { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge.sell, .badge.bearish { background: rgba(239,68,68,0.15); color: var(--red); }
+  .badge.mixed, .badge.none { background: rgba(107,114,128,0.2); color: var(--gray); }
+  .badge.status-idle { background: rgba(107,114,128,0.2); color: var(--gray); }
+  .badge.status-pending { background: rgba(245,158,11,0.15); color: var(--amber); }
+  .badge.status-active { background: rgba(34,197,94,0.15); color: var(--green); }
+  .badge.status-closed { background: rgba(107,114,128,0.2); color: var(--gray); }
+  .confirm-bar-wrap { margin-bottom: 12px; }
+  .confirm-label { font-size: 12px; color: var(--dim); margin-bottom: 4px; display: flex; justify-content: space-between; }
+  .confirm-bar { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
+  .confirm-bar-fill { height: 100%; border-radius: 3px; background: var(--green); }
+  .levels {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .levels td { padding: 4px 0; }
+  .levels td.label { color: var(--dim); }
+  .levels td.val { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .zone-note { font-size: 12px; color: var(--amber); margin-bottom: 8px; }
+  .empty-note { font-size: 13px; color: var(--dim); font-style: italic; }
+  .feed {
+    margin-top: 24px;
+  }
+  .feed h2 { font-size: 14px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 10px 4px; }
+  .alert-row {
+    display: flex;
+    gap: 10px;
+    padding: 10px 4px;
+    border-bottom: 1px solid var(--border);
+  }
+  .alert-row:last-child { border-bottom: none; }
+  .alert-asset { font-size: 11px; font-weight: 700; color: var(--dim); min-width: 58px; padding-top: 1px; }
+  .alert-body { flex: 1; }
+  .alert-title { font-size: 13px; font-weight: 600; }
+  .alert-msg { font-size: 12px; color: var(--dim); margin-top: 2px; white-space: pre-line; }
+  .alert-time { font-size: 11px; color: var(--dim); white-space: nowrap; padding-top: 1px; }
+  .waiting { text-align: center; color: var(--dim); padding: 40px 0; font-size: 14px; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Gold Signal Bot</h1>
+  <span class="updated" id="lastPoll">—</span>
+</header>
+
+<div class="grid" id="cards"></div>
+
+<div class="feed">
+  <h2>Recent Alerts</h2>
+  <div id="alerts"><div class="waiting">Loading…</div></div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script>
+const SUPABASE_URL = "https://vjjnowmsvngijxvkvqhx.supabase.co";
+const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FE879GUYSj-Pw1gp1-kZ2g_h9qbtHmP";
+const ASSETS = ["XAUUSD", "XAGUSD", "BTCUSD"];
+const POLL_MS = 30000;
+
+const client = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+
+function fmt(n, decimals) {
+  if (n === null || n === undefined) return "—";
+  return Number(n).toLocaleString(undefined, { minimumFractionDigits: decimals ?? 2, maximumFractionDigits: decimals ?? 2 });
+}
+
+function timeAgo(iso) {
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60) return "just now";
+  if (diff < 3600) return Math.floor(diff / 60) + "m ago";
+  if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
+  return Math.floor(diff / 86400) + "d ago";
+}
+
+function biasBadgeClass(bias) {
+  if (bias === "BULLISH") return "bullish";
+  if (bias === "BEARISH") return "bearish";
+  return "mixed";
+}
+
+function directionBadgeClass(direction) {
+  if (direction === "BUY") return "buy";
+  if (direction === "SELL") return "sell";
+  return "none";
+}
+
+function renderCard(row) {
+  const decimals = row.asset === "BTCUSD" ? 2 : (row.asset === "XAGUSD" ? 3 : 2);
+  const hasLevels = row.trade_valid && row.entry !== null;
+  const zoneNote = row.chasing && row.zone_low !== null
+    ? `<div class="zone-note">Limit zone ${fmt(row.zone_low, decimals)}–${fmt(row.zone_high, decimals)}</div>`
+    : "";
+  const levels = hasLevels ? `
+    ${zoneNote}
+    <table class="levels">
+      <tr><td class="label">Entry</td><td class="val">${fmt(row.entry, decimals)}</td></tr>
+      <tr><td class="label">Stop Loss</td><td class="val">${fmt(row.sl, decimals)}</td></tr>
+      <tr><td class="label">TP1</td><td class="val">${fmt(row.tp1, decimals)}</td></tr>
+      <tr><td class="label">TP2</td><td class="val">${fmt(row.tp2, decimals)}</td></tr>
+      <tr><td class="label">TP3</td><td class="val">${fmt(row.tp3, decimals)}</td></tr>
+      <tr><td class="label">R:R</td><td class="val">${row.rr ?? "—"}</td></tr>
+    </table>
+  ` : `<div class="empty-note">No valid setup right now — waiting for 7+ confirmations.</div>`;
+
+  return `
+    <div class="card">
+      <div class="card-top">
+        <span class="asset-name">${row.asset}</span>
+        <span class="badge status-${row.status.toLowerCase()}">${row.status}</span>
+      </div>
+      <div class="price">${fmt(row.price, decimals)}</div>
+      <div class="badges">
+        <span class="badge ${biasBadgeClass(row.bias)}">${row.bias}</span>
+        ${row.direction ? `<span class="badge ${directionBadgeClass(row.direction)}">${row.direction}</span>` : ""}
+      </div>
+      <div class="confirm-bar-wrap">
+        <div class="confirm-label"><span>Confirmations</span><span>${row.passed}/${row.total} (${row.probability}%)</span></div>
+        <div class="confirm-bar"><div class="confirm-bar-fill" style="width:${row.probability}%; background:${row.probability >= 80 ? 'var(--green)' : 'var(--amber)'}"></div></div>
+      </div>
+      ${levels}
+    </div>
+  `;
+}
+
+function renderAlert(row) {
+  return `
+    <div class="alert-row">
+      <div class="alert-asset">${row.asset}</div>
+      <div class="alert-body">
+        <div class="alert-title">${row.title}</div>
+        <div class="alert-msg">${row.message}</div>
+      </div>
+      <div class="alert-time">${timeAgo(row.created_at)}</div>
+    </div>
+  `;
+}
+
+async function loadSignals() {
+  const { data, error } = await client.from("signals").select("*");
+  const cardsEl = document.getElementById("cards");
+  if (error) {
+    cardsEl.innerHTML = `<div class="waiting">Error loading signals: ${error.message}</div>`;
+    return;
+  }
+  if (!data || data.length === 0) {
+    cardsEl.innerHTML = `<div class="waiting">Waiting for first data sync…</div>`;
+    return;
+  }
+  const byAsset = Object.fromEntries(data.map(r => [r.asset, r]));
+  cardsEl.innerHTML = ASSETS.filter(a => byAsset[a]).map(a => renderCard(byAsset[a])).join("");
+}
+
+async function loadAlerts() {
+  const { data, error } = await client
+    .from("alerts")
+    .select("*")
+    .order("created_at", { ascending: false })
+    .limit(30);
+  const alertsEl = document.getElementById("alerts");
+  if (error) {
+    alertsEl.innerHTML = `<div class="waiting">Error loading alerts: ${error.message}</div>`;
+    return;
+  }
+  if (!data || data.length === 0) {
+    alertsEl.innerHTML = `<div class="waiting">No alerts yet.</div>`;
+    return;
+  }
+  alertsEl.innerHTML = data.map(renderAlert).join("");
+}
+
+async function refresh() {
+  await Promise.all([loadSignals(), loadAlerts()]);
+  document.getElementById("lastPoll").textContent = "updated " + new Date().toLocaleTimeString();
+}
+
+refresh();
+setInterval(refresh, POLL_MS);
+</script>
+</body>
+</html>

@@ -1,2 +1,23 @@
 venv/
 state.json
+__pycache__/
+local_config.py
+
+# Node / Capacitor
+node_modules/
+
+# Android build artifacts
+android/build/
+android/app/build/
+android/app/src/main/assets/public/
+android/.gradle/
+android/local.properties
+android/capacitor-cordova-android-plugins/build/
+
+# iOS build artifacts
+ios/App/Pods/
+ios/App/build/
+ios/App/App/public/
+ios/DerivedData/
+*.xcuserstate
+xcuserdata/
