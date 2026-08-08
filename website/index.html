@@ -3,244 +3,202 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Gold Signal Bot</title>
+<title>Signal Engine v2</title>
 <style>
-  :root {
-    --bg: #0b0d12;
-    --card: #151821;
-    --border: #262b38;
-    --text: #e6e9f0;
-    --dim: #8a90a2;
-    --green: #22c55e;
-    --red: #ef4444;
-    --gray: #6b7280;
-    --amber: #f59e0b;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Roboto, Helvetica, Arial, sans-serif;
-    padding: max(20px, env(safe-area-inset-top)) 16px calc(env(safe-area-inset-bottom) + 24px);
-  }
-  header {
-    padding: 20px 4px 12px;
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-  }
-  header h1 { font-size: 19px; margin: 0; font-weight: 600; }
-  header .updated { font-size: 12px; color: var(--dim); }
-  .grid {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 12px;
-  }
-  @media (min-width: 700px) {
-    .grid { grid-template-columns: repeat(3, 1fr); }
-  }
-  .card {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 14px;
-    padding: 16px;
-  }
-  .card-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 10px;
-  }
-  .asset-name { font-size: 16px; font-weight: 600; }
-  .price { font-size: 22px; font-weight: 700; margin: 2px 0 10px; font-variant-numeric: tabular-nums; }
-  .badges { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
-  .badge {
-    font-size: 11px;
-    font-weight: 600;
-    padding: 3px 9px;
-    border-radius: 999px;
-    letter-spacing: 0.02em;
-  }
-  .badge.buy, .badge.bullish { background: rgba(34,197,94,0.15); color: var(--green); }
-  .badge.sell, .badge.bearish { background: rgba(239,68,68,0.15); color: var(--red); }
-  .badge.mixed, .badge.none { background: rgba(107,114,128,0.2); color: var(--gray); }
-  .badge.status-idle { background: rgba(107,114,128,0.2); color: var(--gray); }
-  .badge.status-pending { background: rgba(245,158,11,0.15); color: var(--amber); }
-  .badge.status-active { background: rgba(34,197,94,0.15); color: var(--green); }
-  .badge.status-closed { background: rgba(107,114,128,0.2); color: var(--gray); }
-  .confirm-bar-wrap { margin-bottom: 12px; }
-  .confirm-label { font-size: 12px; color: var(--dim); margin-bottom: 4px; display: flex; justify-content: space-between; }
-  .confirm-bar { height: 5px; background: var(--border); border-radius: 3px; overflow: hidden; }
-  .confirm-bar-fill { height: 100%; border-radius: 3px; background: var(--green); }
-  .levels {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 13px;
-  }
-  .levels td { padding: 4px 0; }
-  .levels td.label { color: var(--dim); }
-  .levels td.val { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
-  .zone-note { font-size: 12px; color: var(--amber); margin-bottom: 8px; }
-  .empty-note { font-size: 13px; color: var(--dim); font-style: italic; }
-  .feed {
-    margin-top: 24px;
-  }
-  .feed h2 { font-size: 14px; color: var(--dim); text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 10px 4px; }
-  .alert-row {
-    display: flex;
-    gap: 10px;
-    padding: 10px 4px;
-    border-bottom: 1px solid var(--border);
-  }
-  .alert-row:last-child { border-bottom: none; }
-  .alert-asset { font-size: 11px; font-weight: 700; color: var(--dim); min-width: 58px; padding-top: 1px; }
-  .alert-body { flex: 1; }
-  .alert-title { font-size: 13px; font-weight: 600; }
-  .alert-msg { font-size: 12px; color: var(--dim); margin-top: 2px; white-space: pre-line; }
-  .alert-time { font-size: 11px; color: var(--dim); white-space: nowrap; padding-top: 1px; }
-  .waiting { text-align: center; color: var(--dim); padding: 40px 0; font-size: 14px; }
+  :root{--bg:#0b0d12;--card:#151821;--card2:#1b1f2b;--bd:#262b38;--tx:#e6e9f0;
+    --dim:#8a90a2;--grn:#22c55e;--red:#ef4444;--gry:#6b7280;--amb:#f59e0b;--blu:#3b82f6}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tx);
+    font:14px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text",Roboto,Helvetica,Arial,sans-serif;
+    padding:max(18px,env(safe-area-inset-top)) 16px calc(env(safe-area-inset-bottom) + 32px)}
+  header{display:flex;justify-content:space-between;align-items:baseline;flex-wrap:wrap;gap:8px;padding:4px 4px 16px}
+  h1{font-size:18px;margin:0;font-weight:650}
+  .sub{font-size:12px;color:var(--dim)}
+  .asset{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;margin-bottom:16px}
+  .arow{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+  .aname{font-size:17px;font-weight:650}
+  .price{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+  .inst{font-size:11px;color:var(--dim)}
+  .gate{background:rgba(239,68,68,.09);border:1px solid rgba(239,68,68,.35);
+    border-radius:10px;padding:10px 12px;margin:12px 0;font-size:12.5px}
+  .gate b{color:var(--red)} .gate div{color:#fca5a5;margin-top:3px}
+  .profiles{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
+  @media(min-width:880px){.profiles{grid-template-columns:1fr 1fr}}
+  .prof{background:var(--card2);border:1px solid var(--bd);border-radius:12px;padding:14px}
+  .ptop{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px}
+  .pname{font-weight:650;letter-spacing:.05em;font-size:11px;color:var(--dim)}
+  .badge{font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;letter-spacing:.03em;white-space:nowrap}
+  .b-long{background:rgba(34,197,94,.16);color:var(--grn)}
+  .b-short{background:rgba(239,68,68,.16);color:var(--red)}
+  .b-wait{background:rgba(245,158,11,.16);color:var(--amb)}
+  .b-no{background:rgba(107,114,128,.2);color:var(--gry)}
+  .dirline{font-size:13px;margin:6px 0 10px;padding:8px 10px;border-radius:8px;
+    background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25)}
+  .dirline b.long{color:var(--grn)} .dirline b.short{color:var(--red)}
+  .kv{display:flex;justify-content:space-between;gap:10px;padding:2px 0;font-size:12.5px}
+  .kv span:first-child{color:var(--dim)}
+  .kv span:last-child{text-align:right;font-variant-numeric:tabular-nums}
+  .bar{height:5px;background:var(--bd);border-radius:3px;overflow:hidden;margin:6px 0 10px}
+  .bar div{height:100%;border-radius:3px}
+  .lvls{width:100%;border-collapse:collapse;font-size:12.5px;margin:8px 0}
+  .lvls td{padding:3px 0}
+  .lvls td:last-child{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  .lvls td:first-child{color:var(--dim)}
+  .sec{margin-top:12px;margin-bottom:4px;font-size:10.5px;text-transform:uppercase;
+    letter-spacing:.07em;color:var(--dim)}
+  .rsn{font-size:12px;margin:3px 0;display:flex;gap:7px;align-items:flex-start}
+  .rsn i{font-style:normal;flex:0 0 12px}
+  .ok i{color:var(--grn)} .no i{color:var(--red)} .blk i{color:var(--amb)}
+  .rsn span{opacity:.9}
+  .warn{font-size:11.5px;color:var(--amb);margin-top:6px}
+  .inval{font-size:11.5px;color:var(--dim);margin-top:6px}
+  .foot{font-size:11px;color:var(--dim);margin-top:20px;padding:12px;
+    background:var(--card);border:1px solid var(--bd);border-radius:10px}
+  .foot b{color:var(--amb)}
+  details summary{cursor:pointer;color:var(--dim);font-size:10.5px;
+    text-transform:uppercase;letter-spacing:.07em;margin-top:10px}
+  .z{display:grid;grid-template-columns:1fr auto;gap:8px;padding:6px 0;
+    border-bottom:1px solid var(--bd);font-size:12px}
+  .z:last-child{border-bottom:none}
+  .zk{color:var(--dim);font-size:11px}
+  .zbar{height:4px;background:var(--bd);border-radius:2px;margin-top:4px;overflow:hidden}
+  .zbar div{height:100%;background:var(--blu)}
+  .side-buy{color:var(--grn)} .side-sell{color:var(--red)}
+  .empty{text-align:center;color:var(--dim);padding:40px 0}
 </style>
 </head>
 <body>
 
 <header>
-  <h1>Gold Signal Bot</h1>
-  <span class="updated" id="lastPoll">—</span>
+  <div><h1>Signal Engine v2</h1><div class="sub" id="sub">loading…</div></div>
+  <div class="sub" id="age"></div>
 </header>
-
-<div class="grid" id="cards"></div>
-
-<div class="feed">
-  <h2>Recent Alerts</h2>
-  <div id="alerts"><div class="waiting">Loading…</div></div>
-</div>
+<div id="root"><div class="empty">Loading…</div></div>
+<div class="foot" id="foot"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
-const SUPABASE_URL = "https://vjjnowmsvngijxvkvqhx.supabase.co";
-const SUPABASE_PUBLISHABLE_KEY = "sb_publishable_FE879GUYSj-Pw1gp1-kZ2g_h9qbtHmP";
-const ASSETS = ["XAUUSD", "XAGUSD", "BTCUSD"];
-const POLL_MS = 30000;
+const SUPABASE_URL="https://vjjnowmsvngijxvkvqhx.supabase.co";
+const SUPABASE_KEY="sb_publishable_FE879GUYSj-Pw1gp1-kZ2g_h9qbtHmP";
+const ORDER=["XAUUSD","XAGUSD","BTCUSD"];
+const DP={XAUUSD:2,XAGUSD:3,BTCUSD:2};
+const PROFILES=["SWING","SCALP"];
+const client=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
-const client = supabase.createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY);
+const f=(v,d)=>v==null?"—":Number(v).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
+const esc=s=>String(s??"").replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+const arr=v=>Array.isArray(v)?v:(v?JSON.parse(v):[]);
+function ago(iso){const s=(Date.now()-new Date(iso).getTime())/1000;
+  if(s<60)return"just now";if(s<3600)return Math.floor(s/60)+"m ago";
+  if(s<86400)return Math.floor(s/3600)+"h ago";return Math.floor(s/86400)+"d ago";}
 
-function fmt(n, decimals) {
-  if (n === null || n === undefined) return "—";
-  return Number(n).toLocaleString(undefined, { minimumFractionDigits: decimals ?? 2, maximumFractionDigits: decimals ?? 2 });
+function badge(d){const m={LONG:"b-long",SHORT:"b-short",WAIT:"b-wait"};
+  return `<span class="badge ${m[d]||"b-no"}">${esc(d||"—")}</span>`;}
+
+/* The headline sentence: what side was evaluated, and what the engine decided
+   about it. This is the thing that was previously buried in a collapsed panel. */
+function directionLine(r){
+  const dir=r.direction_considered, dec=r.decision;
+  if(!dir) return `<div class="dirline">No directional case evaluated — the data
+    gate blocked analysis before a side could be assessed.</div>`;
+  const cls=dir==="LONG"?"long":"short";
+  const word=dir==="LONG"?"buying":"selling";
+  let verdict;
+  if(dec===dir) verdict=`<b class="${cls}">Take the ${dir}</b> — every gate passed and price is at the entry.`;
+  else if(dec==="WAIT") verdict=`<b class="${cls}">${dir} setup is armed</b> — all gates passed, but price has not reached the entry yet, so the order rests.`;
+  else verdict=`<b class="${cls}">${dir} was the stronger case</b>, but it is <b>rejected</b> — see gate failures below.`;
+  return `<div class="dirline">The engine scored both sides and found the
+    <b class="${cls}">${esc(dir)}</b> (${word}) case stronger. ${verdict}</div>`;
 }
 
-function timeAgo(iso) {
-  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
-  if (diff < 60) return "just now";
-  if (diff < 3600) return Math.floor(diff / 60) + "m ago";
-  if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
-  return Math.floor(diff / 86400) + "d ago";
+function zoneRow(z,dp){
+  const side=z.side==="buy_side"?"side-buy":"side-sell";
+  const lbl=z.side==="buy_side"?"buy-side ▲":"sell-side ▼";
+  return `<div class="z"><div>
+    <div><b>${f(z.low,dp)} – ${f(z.high,dp)}</b> <span class="${side}">${lbl}</span></div>
+    <div class="zk">${esc((z.kinds||[]).slice(0,3).join(" · "))} · ${z.confirmations} conf ·
+      ${z.tests} tests · ${z.distance_atr>0?"+":""}${z.distance_atr} ATR</div>
+    <div class="zbar"><div style="width:${z.strength}%"></div></div></div>
+    <div style="text-align:right"><b>${Math.round(z.strength)}</b>
+    <div class="zk">${esc(z.probability)}</div></div></div>`;
 }
 
-function biasBadgeClass(bias) {
-  if (bias === "BULLISH") return "bullish";
-  if (bias === "BEARISH") return "bearish";
-  return "mixed";
+function profileCard(name,r,dp){
+  if(!r) return `<div class="prof"><div class="ptop"><span class="pname">${name}</span>
+    ${badge(null)}</div><div class="sub">no data yet</div></div>`;
+  const sc=r.confluence_score??0;
+  const col=sc>=70?"var(--grn)":sc>=50?"var(--amb)":"var(--red)";
+  const forR=arr(r.reasons_for), agR=arr(r.reasons_against), blk=arr(r.blockers);
+  const rows=[];
+  if(r.entry!=null) rows.push(`<tr><td>Entry <span class="zk">${esc(r.entry_type||"")}</span></td><td>${f(r.entry,dp)}</td></tr>`);
+  if(r.stop!=null) rows.push(`<tr><td>Stop <span class="zk">${r.stop_atr} ATR</span></td><td>${f(r.stop,dp)}</td></tr>`);
+  [1,2,3].forEach(i=>{const p=r["tp"+i];if(p!=null)
+    rows.push(`<tr><td>T${i} <span class="zk">${esc(i===1?(r.tp1_anchor||""):"")}</span></td>
+      <td>${f(p,dp)} <span class="zk">${r["tp"+i+"_rr"]??"—"}R</span></td></tr>`);});
+  if(r.primary_rr!=null) rows.push(`<tr><td>R:R (T1)</td><td>${r.primary_rr}</td></tr>`);
+  if(r.lots!=null) rows.push(`<tr><td>Size</td><td>${r.lots} lots</td></tr>`);
+
+  return `<div class="prof">
+    <div class="ptop"><span class="pname">${name} · ${esc(r.expected_hold||"")}</span>${badge(r.decision)}</div>
+    ${directionLine(r)}
+    <div class="kv"><span>Confluence</span><span>${sc}/100 (${r.confirmations_passed??"—"}/${r.confirmations_total??"—"})
+      ${r.counter_trend?' <b style="color:var(--amb)">counter-trend</b>':""}</span></div>
+    <div class="bar"><div style="width:${sc}%;background:${col}"></div></div>
+    <div class="kv"><span>Regime</span><span>${esc(r.regime||"—")} (ADX ${r.adx??"—"})</span></div>
+    <div class="kv"><span>HTF bias</span><span>${esc(r.htf_bias||"—")}</span></div>
+    <div class="kv"><span>Structure</span><span>${esc(r.structure_trend||"—")} · ${esc(r.structure_event||"—")}</span></div>
+    <div class="kv"><span>Premium/discount</span><span>${esc(r.pd_label||"—")} (${r.pd_position??"—"})</span></div>
+    ${rows.length?`<table class="lvls">${rows.join("")}</table>`:""}
+    ${r.invalidation?`<div class="inval"><b>Invalidation:</b> ${esc(r.invalidation)}</div>`:""}
+
+    ${blk.length?`<div class="sec">Why it is not a trade</div>`+
+      blk.map(b=>`<div class="rsn blk"><i>✗</i><span>${esc(b)}</span></div>`).join(""):""}
+
+    ${forR.length?`<div class="sec">Evidence for the ${esc(r.direction_considered||"")} case</div>`+
+      forR.map(x=>`<div class="rsn ok"><i>+</i><span>${esc(x)}</span></div>`).join(""):""}
+
+    ${agR.length?`<div class="sec">Evidence against</div>`+
+      agR.map(x=>`<div class="rsn no"><i>−</i><span>${esc(x)}</span></div>`).join(""):""}
+
+    <details><summary>Liquidity map (${arr(r.zones).length})</summary>
+      ${arr(r.zones).map(z=>zoneRow(z,dp)).join("")||'<div class="sub">none</div>'}
+    </details>
+  </div>`;
 }
 
-function directionBadgeClass(direction) {
-  if (direction === "BUY") return "buy";
-  if (direction === "SELL") return "sell";
-  return "none";
+async function load(){
+  const {data,error}=await client.from("signals_v2").select("*");
+  const root=document.getElementById("root");
+  if(error){root.innerHTML=`<div class="empty">Error: ${esc(error.message)}</div>`;return;}
+  if(!data||!data.length){root.innerHTML='<div class="empty">Waiting for first v2 sync…</div>';return;}
+
+  const by={};data.forEach(r=>{(by[r.asset]=by[r.asset]||{})[r.profile]=r;});
+  const newest=data.reduce((a,b)=>new Date(a.updated_at)>new Date(b.updated_at)?a:b);
+  document.getElementById("sub").textContent=`${Object.keys(by).length} assets · SWING + SCALP`;
+  document.getElementById("age").textContent="updated "+ago(newest.updated_at);
+
+  root.innerHTML=ORDER.filter(a=>by[a]).map(a=>{
+    const any=by[a].SWING||by[a].SCALP, dp=DP[a]??2;
+    const gateOk=any.data_gate_ok, hard=arr(any.data_blockers);
+    return `<div class="asset">
+      <div class="arow"><div><div class="aname">${esc(a)}</div></div>
+        <div class="price">${f(any.price,dp)}</div></div>
+      ${!gateOk?`<div class="gate"><b>DATA GATE FAILED — trading suspended</b>
+        ${hard.map(b=>`<div>✗ ${esc(b)}</div>`).join("")}
+        <div style="color:var(--dim);margin-top:6px">No signal is issued while the
+        feed is stale — this is deliberate, not a fault.</div></div>`:""}
+      <div class="profiles">${PROFILES.map(p=>profileCard(p,by[a][p],dp)).join("")}</div>
+    </div>`;
+  }).join("");
+
+  document.getElementById("foot").innerHTML=`<b>Not financial advice.</b>
+    confluence_score is a weighted confirmation-density ratio, <b>not</b> a calibrated
+    probability — no component has been validated against realised trade outcomes.
+    Position sizes assume the configured account equity.<br><br>
+    <b>Unavailable data</b> (cannot be inferred from OHLCV): order book · open interest ·
+    liquidation clusters · live bid-ask spread · tick-level volume · futures roll calendar.`;
 }
-
-function renderCard(row) {
-  const decimals = row.asset === "BTCUSD" ? 2 : (row.asset === "XAGUSD" ? 3 : 2);
-  const hasLevels = row.trade_valid && row.entry !== null;
-  const zoneNote = row.chasing && row.zone_low !== null
-    ? `<div class="zone-note">Limit zone ${fmt(row.zone_low, decimals)}–${fmt(row.zone_high, decimals)}</div>`
-    : "";
-  const levels = hasLevels ? `
-    ${zoneNote}
-    <table class="levels">
-      <tr><td class="label">Entry</td><td class="val">${fmt(row.entry, decimals)}</td></tr>
-      <tr><td class="label">Stop Loss</td><td class="val">${fmt(row.sl, decimals)}</td></tr>
-      <tr><td class="label">TP1</td><td class="val">${fmt(row.tp1, decimals)}</td></tr>
-      <tr><td class="label">TP2</td><td class="val">${fmt(row.tp2, decimals)}</td></tr>
-      <tr><td class="label">TP3</td><td class="val">${fmt(row.tp3, decimals)}</td></tr>
-      <tr><td class="label">R:R</td><td class="val">${row.rr ?? "—"}</td></tr>
-    </table>
-  ` : `<div class="empty-note">No valid setup right now — waiting for 7+ confirmations.</div>`;
-
-  return `
-    <div class="card">
-      <div class="card-top">
-        <span class="asset-name">${row.asset}</span>
-        <span class="badge status-${row.status.toLowerCase()}">${row.status}</span>
-      </div>
-      <div class="price">${fmt(row.price, decimals)}</div>
-      <div class="badges">
-        <span class="badge ${biasBadgeClass(row.bias)}">${row.bias}</span>
-        ${row.direction ? `<span class="badge ${directionBadgeClass(row.direction)}">${row.direction}</span>` : ""}
-      </div>
-      <div class="confirm-bar-wrap">
-        <div class="confirm-label"><span>Confirmations</span><span>${row.passed}/${row.total} (${row.probability}%)</span></div>
-        <div class="confirm-bar"><div class="confirm-bar-fill" style="width:${row.probability}%; background:${row.probability >= 80 ? 'var(--green)' : 'var(--amber)'}"></div></div>
-      </div>
-      ${levels}
-    </div>
-  `;
-}
-
-function renderAlert(row) {
-  return `
-    <div class="alert-row">
-      <div class="alert-asset">${row.asset}</div>
-      <div class="alert-body">
-        <div class="alert-title">${row.title}</div>
-        <div class="alert-msg">${row.message}</div>
-      </div>
-      <div class="alert-time">${timeAgo(row.created_at)}</div>
-    </div>
-  `;
-}
-
-async function loadSignals() {
-  const { data, error } = await client.from("signals").select("*");
-  const cardsEl = document.getElementById("cards");
-  if (error) {
-    cardsEl.innerHTML = `<div class="waiting">Error loading signals: ${error.message}</div>`;
-    return;
-  }
-  if (!data || data.length === 0) {
-    cardsEl.innerHTML = `<div class="waiting">Waiting for first data sync…</div>`;
-    return;
-  }
-  const byAsset = Object.fromEntries(data.map(r => [r.asset, r]));
-  cardsEl.innerHTML = ASSETS.filter(a => byAsset[a]).map(a => renderCard(byAsset[a])).join("");
-}
-
-async function loadAlerts() {
-  const { data, error } = await client
-    .from("alerts")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(30);
-  const alertsEl = document.getElementById("alerts");
-  if (error) {
-    alertsEl.innerHTML = `<div class="waiting">Error loading alerts: ${error.message}</div>`;
-    return;
-  }
-  if (!data || data.length === 0) {
-    alertsEl.innerHTML = `<div class="waiting">No alerts yet.</div>`;
-    return;
-  }
-  alertsEl.innerHTML = data.map(renderAlert).join("");
-}
-
-async function refresh() {
-  await Promise.all([loadSignals(), loadAlerts()]);
-  document.getElementById("lastPoll").textContent = "updated " + new Date().toLocaleTimeString();
-}
-
-refresh();
-setInterval(refresh, POLL_MS);
+load();setInterval(load,30000);
 </script>
 </body>
 </html>

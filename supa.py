@@ -65,6 +65,56 @@ def load_all_state():
         print(f"supabase load_all_state failed: {e}")
         return {}
 
+def _post(table, rows, upsert=False):
+    url, key = _config()
+    if not url:
+        return False
+    headers = _headers(key)
+    if upsert:
+        headers["Prefer"] = "resolution=merge-duplicates"
+    try:
+        r = requests.post(f"{url}/rest/v1/{table}", json=rows, headers=headers,
+                          timeout=15)
+        if not r.ok:
+            print(f"supabase {table} write failed: {r.status_code} {r.text[:300]}")
+            return False
+        return True
+    except requests.RequestException as e:
+        print(f"supabase {table} write failed: {e}")
+        return False
+
+
+def upsert_signal_v2(row):
+    row = dict(row)
+    row["updated_at"] = _now_iso()
+    return _post("signals_v2", [row], upsert=True)
+
+
+def load_state_v2():
+    """Returns {(asset, profile): row}."""
+    url, key = _config()
+    if not url:
+        return {}
+    try:
+        r = requests.get(f"{url}/rest/v1/bot_state_v2?select=*",
+                         headers=_headers(key), timeout=15)
+        if not r.ok:
+            print(f"supabase load_state_v2 failed: {r.status_code} {r.text[:200]}")
+            return {}
+        return {(x["asset"], x["profile"]): x for x in r.json()}
+    except requests.RequestException as e:
+        print(f"supabase load_state_v2 failed: {e}")
+        return {}
+
+
+def save_state_v2(asset, profile, state):
+    row = dict(state)
+    row["asset"] = asset
+    row["profile"] = profile
+    row["updated_at"] = _now_iso()
+    return _post("bot_state_v2", [row], upsert=True)
+
+
 def save_state(asset, state):
     url, key = _config()
     if not url:
