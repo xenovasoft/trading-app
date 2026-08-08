@@ -19,6 +19,23 @@ def fetch_binance(symbol, interval, limit=500):
     df["time"] = pd.to_datetime(df["open_time"], unit="ms")
     return df[["time","open","high","low","close","volume"]]
 
+def fetch_kraken(pair, interval_minutes, limit=500):
+    """Kraken public OHLC API — unlike Binance, not geo-blocked for US-hosted
+    CI runners, which is what GitHub Actions uses."""
+    url = "https://api.kraken.com/0/public/OHLC"
+    r = requests.get(url, params={"pair": pair, "interval": interval_minutes}, timeout=15)
+    r.raise_for_status()
+    data = r.json()
+    if data.get("error"):
+        raise RuntimeError(f"Kraken API error: {data['error']}")
+    result_key = next(k for k in data["result"].keys() if k != "last")
+    rows = data["result"][result_key]
+    df = pd.DataFrame(rows, columns=["time","open","high","low","close","vwap","volume","count"])
+    df["time"] = pd.to_datetime(df["time"], unit="s")
+    for c in ["open","high","low","close","volume"]:
+        df[c] = df[c].astype(float)
+    return df[["time","open","high","low","close","volume"]].tail(limit).reset_index(drop=True)
+
 def fetch_yahoo(symbol, interval, rng):
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
     r = requests.get(url, params={"interval": interval, "range": rng}, headers=UA, timeout=15)
@@ -351,6 +368,19 @@ def run_symbol_binance(binance_symbol):
         raw[label] = df
     return out, raw
 
+def run_symbol_kraken(pair):
+    tfs_minutes = {"Weekly": 10080, "Daily": 1440, "4H": 240, "1H": 60, "15M": 15, "5M": 5}
+    out, raw = {}, {}
+    for label, mins in tfs_minutes.items():
+        df = fetch_kraken(pair, mins, limit=500)
+        out[label] = analyze_tf(df, label)
+        raw[label] = df
+    # Kraken has no native monthly candle — derive it from daily.
+    monthly = resample(raw["Daily"], "ME")
+    out["Monthly"] = analyze_tf(monthly, "Monthly")
+    raw["Monthly"] = monthly
+    return out, raw
+
 def run_symbol_yahoo(yahoo_symbol):
     out, raw = {}, {}
     monthly, meta = fetch_yahoo(yahoo_symbol, "1mo", "10y")
@@ -373,13 +403,13 @@ def run_symbol_yahoo(yahoo_symbol):
 ASSETS = {
     "XAUUSD": {"kind": "yahoo", "symbol": "GC=F"},
     "XAGUSD": {"kind": "yahoo", "symbol": "SI=F"},
-    "BTCUSD": {"kind": "binance", "symbol": "BTCUSDT"},
+    "BTCUSD": {"kind": "kraken", "symbol": "XBTUSD"},
 }
 
 def fetch_asset(name):
     cfg = ASSETS[name]
-    if cfg["kind"] == "binance":
-        return run_symbol_binance(cfg["symbol"])
+    if cfg["kind"] == "kraken":
+        return run_symbol_kraken(cfg["symbol"])
     return run_symbol_yahoo(cfg["symbol"])
 
 # ---------------- SIGNAL SYNTHESIS ----------------

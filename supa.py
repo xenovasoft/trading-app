@@ -1,5 +1,9 @@
 import os
+import datetime
 import requests
+
+def _now_iso():
+    return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 def _config():
     url = os.environ.get("SUPABASE_URL")
@@ -23,6 +27,8 @@ def upsert_signal(row):
     url, key = _config()
     if not url:
         return
+    row = dict(row)
+    row["updated_at"] = _now_iso()
     headers = _headers(key)
     headers["Prefer"] = "resolution=merge-duplicates"
     try:
@@ -65,6 +71,7 @@ def save_state(asset, state):
         return
     row = dict(state)
     row["asset"] = asset
+    row["updated_at"] = _now_iso()
     headers = _headers(key)
     headers["Prefer"] = "resolution=merge-duplicates"
     try:
