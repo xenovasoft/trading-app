@@ -166,8 +166,29 @@ function profileCard(name,r,dp){
   </div>`;
 }
 
+/* Fetch order matters. The same-origin /api/signals route is tried FIRST
+   because a cross-origin fetch to supabase.co fails inside the iOS Capacitor
+   WKWebView ("TypeError: Load failed") even though it works in Safari. The
+   direct Supabase call is kept as a fallback so the page still works when
+   opened without the serverless route (e.g. a plain static file server). */
+async function fetchSignals(){
+  try{
+    const r=await fetch("/api/signals",{cache:"no-store"});
+    if(r.ok){
+      const j=await r.json();
+      if(Array.isArray(j)) return {data:j,error:null,via:"same-origin"};
+    }
+  }catch(e){/* fall through to direct */}
+  try{
+    const {data,error}=await client.from("signals_v2").select("*");
+    return {data,error,via:"supabase-direct"};
+  }catch(e){
+    return {data:null,error:{message:String(e&&e.message||e)},via:"failed"};
+  }
+}
+
 async function load(){
-  const {data,error}=await client.from("signals_v2").select("*");
+  const {data,error}=await fetchSignals();
   const root=document.getElementById("root");
   if(error){root.innerHTML=`<div class="empty">Error: ${esc(error.message)}</div>`;return;}
   if(!data||!data.length){root.innerHTML='<div class="empty">Waiting for first v2 sync…</div>';return;}

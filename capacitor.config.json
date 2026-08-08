@@ -1,5 +1,21 @@
 {
   "appId": "com.xenovasoft.goldsignalbot",
-  "appName": "Gold Signal Bot",
-  "webDir": "website"
+  "appName": "Signal Engine",
+  "webDir": "website",
+  "server": {
+    "url": "https://trading-app-8whr.vercel.app",
+    "cleartext": false
+  },
+  "ios": {
+    "contentInset": "always"
+  },
+  "plugins": {
+    "CapacitorHttp": {
+      "comment": "Must stay disabled. When enabled, Capacitor monkey-patches window.fetch to route through native HTTP, which breaks supabase-js and surfaces as 'TypeError: Load failed' in the app while the identical page works in Safari.",
+      "enabled": false
+    },
+    "CapacitorCookies": {
+      "enabled": false
+    }
+  }
 }
