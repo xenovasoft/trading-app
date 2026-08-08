@@ -316,6 +316,17 @@ def analyze_tf(df, label):
         "macd_signal": float(last["macd_signal"]) if pd.notna(last["macd_signal"]) else None,
         "atr14": float(last["atr14"]) if pd.notna(last["atr14"]) else None,
         "adx14": float(last["adx14"]) if pd.notna(last["adx14"]) else None,
+        "plus_di": float(last["plus_di"]) if pd.notna(last["plus_di"]) else None,
+        "minus_di": float(last["minus_di"]) if pd.notna(last["minus_di"]) else None,
+        "bb_upper": float(last["bb_upper"]) if pd.notna(last["bb_upper"]) else None,
+        "bb_mid": float(last["bb_mid"]) if pd.notna(last["bb_mid"]) else None,
+        "bb_lower": float(last["bb_lower"]) if pd.notna(last["bb_lower"]) else None,
+        "supertrend": float(last["supertrend"]) if pd.notna(last["supertrend"]) else None,
+        "st_trend": "UP" if last["st_trend"] == 1 else "DOWN",
+        "tenkan": float(last["tenkan"]) if pd.notna(last["tenkan"]) else None,
+        "kijun": float(last["kijun"]) if pd.notna(last["kijun"]) else None,
+        "senkou_a": float(last["senkou_a"]) if pd.notna(last["senkou_a"]) else None,
+        "senkou_b": float(last["senkou_b"]) if pd.notna(last["senkou_b"]) else None,
         "structure_highs_seq": hseq,
         "structure_lows_seq": lseq,
         "bos_choch": bos,
@@ -453,6 +464,41 @@ def synthesize(asset_name, data, raw_dfs):
 
         adx_ok = (h4["adx14"] or 0) > 25 or (h1["adx14"] or 0) > 25
         confirmations["ADX Trend Strength (>25 on 4H/1H)"] = bool(adx_ok)
+
+        st_ok = (h1["st_trend"] == "UP" and h4["st_trend"] == "UP") if want_bull else \
+                (h1["st_trend"] == "DOWN" and h4["st_trend"] == "DOWN")
+        confirmations["SuperTrend Alignment (1H/4H)"] = bool(st_ok)
+
+        cloud_top = max(h4["senkou_a"], h4["senkou_b"]) if h4["senkou_a"] and h4["senkou_b"] else None
+        cloud_bottom = min(h4["senkou_a"], h4["senkou_b"]) if h4["senkou_a"] and h4["senkou_b"] else None
+        ichimoku_ok = False
+        if cloud_top and cloud_bottom and h4["tenkan"] and h4["kijun"]:
+            ichimoku_ok = (price > cloud_top and h4["tenkan"] > h4["kijun"]) if want_bull else \
+                          (price < cloud_bottom and h4["tenkan"] < h4["kijun"])
+        confirmations["Ichimoku Cloud (4H, price+Tenkan/Kijun)"] = bool(ichimoku_ok)
+
+        bb_ok = False
+        if h1["bb_mid"] and h1["bb_upper"] and h1["bb_lower"]:
+            bb_ok = (h1["bb_mid"] < price < h1["bb_upper"] * 1.02) if want_bull else \
+                    (h1["bb_lower"] * 0.98 < price < h1["bb_mid"])
+        confirmations["Bollinger Band Position (1H, trending not exhausted)"] = bool(bb_ok)
+
+        zone_ok = False
+        ref_highs, ref_lows = h4["swing_highs_last3"], h4["swing_lows_last3"]
+        if ref_highs and ref_lows:
+            swing_high = max(v for _, v in ref_highs)
+            swing_low = min(v for _, v in ref_lows)
+            rng = swing_high - swing_low
+            if rng > 0:
+                level = (price - swing_low) / rng
+                zone_ok = level <= 0.5 if want_bull else level >= 0.5
+        confirmations["Premium/Discount Zone (4H Fib 50%)"] = bool(zone_ok)
+
+        rsi_d = da["rsi14"]
+        rsi_d_ok = (50 <= rsi_d <= 75) if want_bull else (25 <= rsi_d <= 50)
+        confirmations["RSI Confluence (Daily)"] = bool(rsi_d_ok) if rsi_d is not None else False
+
+        confirmations["Weekly Trend Strength (ADX>20)"] = bool((wk["adx14"] or 0) > 20)
 
         confirmations = {k: bool(v) for k, v in confirmations.items()}
 

@@ -1,13 +1,9 @@
-import json
-import os
 import sys
 import traceback
 
 from engine import analyze
 from notify import push
-from supa import upsert_signal, insert_alert
-
-STATE_PATH = os.path.join(os.path.dirname(__file__), "state.json")
+from supa import upsert_signal, insert_alert, load_all_state, save_state
 
 DEFAULT_ASSET_STATE = {
     "status": "IDLE",   # IDLE -> PENDING -> ACTIVE -> CLOSED -> IDLE
@@ -17,16 +13,6 @@ DEFAULT_ASSET_STATE = {
     "last_bos": None,
     "last_sweep": None,
 }
-
-def load_state():
-    if os.path.exists(STATE_PATH):
-        with open(STATE_PATH) as f:
-            return json.load(f)
-    return {}
-
-def save_state(state):
-    with open(STATE_PATH, "w") as f:
-        json.dump(state, f, indent=2)
 
 def fmt(x):
     return f"{x:,.2f}" if isinstance(x, (int, float)) else x
@@ -110,6 +96,7 @@ def process_asset(asset, state):
                         st["status"] = "CLOSED"
 
     state[asset] = st
+    save_state(asset, st)
 
     upsert_signal({
         "asset": asset,
@@ -132,7 +119,7 @@ def process_asset(asset, state):
     return sig
 
 def main():
-    state = load_state()
+    state = load_all_state()
     results = {}
     for asset in ["XAUUSD", "XAGUSD", "BTCUSD"]:
         try:
@@ -140,7 +127,6 @@ def main():
         except Exception as e:
             print(f"[{asset}] ERROR: {e}", file=sys.stderr)
             traceback.print_exc()
-    save_state(state)
     for asset, sig in results.items():
         print(f"{asset}: price={fmt(sig['price'])} bias={sig['bias']} direction={sig['direction']} "
               f"valid={sig['trade_valid']} conf={sig['passed']}/{sig['total']} status={state[asset]['status']}")

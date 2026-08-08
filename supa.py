@@ -43,3 +43,33 @@ def insert_alert(asset, type_, title, message):
             print(f"supabase insert_alert failed: {r.status_code} {r.text}")
     except requests.RequestException as e:
         print(f"supabase insert_alert failed: {e}")
+
+def load_all_state():
+    """Returns {asset: state_dict} for every row in bot_state. Empty dict on failure."""
+    url, key = _config()
+    if not url:
+        return {}
+    try:
+        r = requests.get(f"{url}/rest/v1/bot_state?select=*", headers=_headers(key), timeout=10)
+        if not r.ok:
+            print(f"supabase load_all_state failed: {r.status_code} {r.text}")
+            return {}
+        return {row["asset"]: row for row in r.json()}
+    except requests.RequestException as e:
+        print(f"supabase load_all_state failed: {e}")
+        return {}
+
+def save_state(asset, state):
+    url, key = _config()
+    if not url:
+        return
+    row = dict(state)
+    row["asset"] = asset
+    headers = _headers(key)
+    headers["Prefer"] = "resolution=merge-duplicates"
+    try:
+        r = requests.post(f"{url}/rest/v1/bot_state", json=[row], headers=headers, timeout=10)
+        if not r.ok:
+            print(f"supabase save_state failed: {r.status_code} {r.text}")
+    except requests.RequestException as e:
+        print(f"supabase save_state failed: {e}")
