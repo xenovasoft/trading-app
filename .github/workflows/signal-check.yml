@@ -5,10 +5,18 @@ on:
     - cron: "*/15 * * * *"
   workflow_dispatch: {}
 
+# Two runs must never overlap: run_check_v2 reads bot_state_v2, decides
+# transitions against it, then writes it back. Two jobs interleaving there can
+# lose a state change or fire a duplicate alert. Queue instead of cancelling —
+# cancelling mid-run could abandon a partially-written state.
+concurrency:
+  group: signal-check
+  cancel-in-progress: false
+
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -19,8 +27,20 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      # GitHub's scheduled triggers are best-effort and are routinely delayed
+      # under load — observed 30 minutes between updates on a */15 cron, which
+      # silently doubles the age of every "live" prediction on the site.
+      # Looping inside the job decouples evaluation cadence from the
+      # scheduler's punctuality: even if the trigger slips, one job still
+      # produces several evenly-spaced evaluations. `|| true` keeps a single
+      # transient failure (API hiccup) from killing the rest of the run.
       - name: Run signal check (v2 engine)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-        run: python run_check_v2.py
+        run: |
+          for i in 1 2 3; do
+            echo "--- evaluation $i/3 at $(date -u +%H:%M:%SZ) ---"
+            python run_check_v2.py || true
+            if [ "$i" -lt 3 ]; then sleep 300; fi
+          done
