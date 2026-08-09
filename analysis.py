@@ -321,13 +321,45 @@ def build_setup(asset, direction, frames, frames_i, zones, price, atr_val,
 # ------------------------------------------------------------------ MAIN ----
 
 def analyze_asset(name):
+    """Live path: fetch the current market data, then run the shared analysis."""
     frames, reports, price, meta = dataio.load_asset(name)
     hard, soft = dataio.data_blockers(reports)
+    return analyze_frames(name, frames, price, meta=meta, reports=reports,
+                          hard=hard, soft=soft)
 
-    frames_i, availability = {}, {}
-    for tf, df in frames.items():
-        if len(df) >= 30:
-            frames_i[tf], availability[tf] = ind.compute_all(df, tf)
+
+def analyze_frames(name, frames, price, meta=None, reports=None, hard=None,
+                   soft=None, frames_i=None, availability=None):
+    """Run the analysis on caller-supplied frames.
+
+    This is the seam the backtester replays through, so a historical run
+    exercises the IDENTICAL decision logic as the live loop rather than a
+    parallel reimplementation that could silently drift from it.
+
+    `frames_i` (precomputed indicators) may be supplied to skip recomputation.
+    That is only sound because indicators here are strictly causal — the
+    no-lookahead suite asserts every indicator's value at bar N is identical
+    whether or not later bars exist — so slicing a once-computed indicator
+    frame is equivalent to recomputing it on the truncated frame, just far
+    cheaper across thousands of replay steps.
+
+    Historical replay passes hard=[] deliberately: the live data gate rejects
+    bars that are old relative to NOW, which is true of all history by
+    definition and would refuse every backtest bar.
+    """
+    reports = {} if reports is None else reports
+    hard = [] if hard is None else hard
+    soft = [] if soft is None else soft
+
+    if frames_i is None:
+        frames_i, availability = {}, {}
+        for tf, df in frames.items():
+            if len(df) >= 30:
+                frames_i[tf], availability[tf] = ind.compute_all(df, tf)
+    else:
+        availability = availability or {}
+
+    meta = meta or {"asset": name}
 
     result = {
         "asset": name,

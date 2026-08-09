@@ -27,14 +27,24 @@ def swing_points(df, left=None, right=None):
     left = left or config.STRUCTURE["swing_left"]
     right = right or config.STRUCTURE["swing_right"]
     h, l = df["high"].to_numpy(), df["low"].to_numpy()
-    highs, lows = [], []
-    for i in range(left, len(df) - right):
-        win_h = h[i - left:i + right + 1]
-        win_l = l[i - left:i + right + 1]
-        if h[i] == win_h.max() and (win_h.argmax() == left):
-            highs.append((i, float(h[i]), df["time"].iloc[i]))
-        if l[i] == win_l.min() and (win_l.argmin() == left):
-            lows.append((i, float(l[i]), df["time"].iloc[i]))
+    win = left + right + 1
+    if len(h) < win:
+        return [], []
+
+    # Vectorised equivalent of the original per-bar loop. Testing
+    # `argmax == left` alone is exactly the old `h[i] == win.max() and
+    # argmax == left` pair, because argmax already returns the FIRST maximum:
+    # an equal-or-higher value earlier in the window fails both forms alike.
+    # This is the backtester's hot path (millions of window scans) and the
+    # scalar df["time"].iloc[i] lookup it replaces dominated the profile.
+    times = df["time"].to_numpy()
+    sw_h = np.lib.stride_tricks.sliding_window_view(h, win)
+    sw_l = np.lib.stride_tricks.sliding_window_view(l, win)
+    hi_idx = np.flatnonzero(sw_h.argmax(axis=1) == left) + left
+    lo_idx = np.flatnonzero(sw_l.argmin(axis=1) == left) + left
+
+    highs = [(int(i), float(h[i]), pd.Timestamp(times[i])) for i in hi_idx]
+    lows = [(int(i), float(l[i]), pd.Timestamp(times[i])) for i in lo_idx]
     return highs, lows
 
 
@@ -295,20 +305,27 @@ def equal_levels(highs, lows, atr_val):
     if not atr_val or np.isnan(atr_val):
         return [], []
     tol = config.LIQUIDITY["equal_level_atr_tol"] * atr_val
-    eqh, eql = [], []
+
+    def _pairs(pts):
+        """All (a, b) with b > a whose levels sit within tol.
+
+        np.triu_indices(k=1) enumerates in the same row-major order the old
+        nested a/b loops did, so the trailing [-6:] slice keeps selecting the
+        same six pairs. The pairwise comparison was O(n^2) in Python and
+        showed up as ~50M abs() calls in the backtest profile.
+        """
+        if len(pts) < 2:
+            return []
+        idx = np.fromiter((i for i, _ in pts), dtype=np.int64, count=len(pts))
+        val = np.fromiter((v for _, v in pts), dtype=float, count=len(pts))
+        a, b = np.triu_indices(len(pts), k=1)
+        keep = np.flatnonzero(np.abs(val[b] - val[a]) <= tol)
+        return [{"price": float((val[a[k]] + val[b[k]]) / 2), "count": 2,
+                 "indices": [int(idx[a[k]]), int(idx[b[k]])]} for k in keep]
+
     hv = [(i, v) for i, v, _ in highs]
     lv = [(i, v) for i, v, _ in lows]
-    for a in range(len(hv)):
-        for b in range(a + 1, len(hv)):
-            if abs(hv[b][1] - hv[a][1]) <= tol:
-                eqh.append({"price": float((hv[a][1] + hv[b][1]) / 2),
-                            "count": 2, "indices": [hv[a][0], hv[b][0]]})
-    for a in range(len(lv)):
-        for b in range(a + 1, len(lv)):
-            if abs(lv[b][1] - lv[a][1]) <= tol:
-                eql.append({"price": float((lv[a][1] + lv[b][1]) / 2),
-                            "count": 2, "indices": [lv[a][0], lv[b][0]]})
-    return eqh[-6:], eql[-6:]
+    return _pairs(hv)[-6:], _pairs(lv)[-6:]
 
 
 # --------------------------------------------------------- ZONE ASSEMBLY ---

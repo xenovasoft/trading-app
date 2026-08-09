@@ -21,3 +21,4 @@ ios/App/App/public/
 ios/DerivedData/
 *.xcuserstate
 xcuserdata/
+bt_cache/
