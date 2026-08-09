@@ -38,11 +38,13 @@ def upsert_signal(row):
     except requests.RequestException as e:
         print(f"supabase upsert_signal failed: {e}")
 
-def insert_alert(asset, type_, title, message):
+def insert_alert(asset, type_, title, message, profile=None):
     url, key = _config()
     if not url:
         return
     row = {"asset": asset, "type": type_, "title": title, "message": message}
+    if profile:
+        row["profile"] = profile
     try:
         r = requests.post(f"{url}/rest/v1/alerts", json=[row], headers=_headers(key), timeout=10)
         if not r.ok:

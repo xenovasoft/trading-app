@@ -42,9 +42,9 @@ def fmt(x, dp=2):
     return f"{x:,.{dp}f}" if isinstance(x, (int, float)) else str(x)
 
 
-def notify(asset, kind, title, message, priority="default", tags=None):
+def notify(asset, kind, title, message, priority="default", tags=None, profile=None):
     push(title, message, priority=priority, tags=tags)
-    insert_alert(asset, kind, title, message)
+    insert_alert(asset, kind, title, message, profile=profile)
     print(f"  PUSH [{kind}] {title}")
 
 
@@ -121,18 +121,21 @@ def process(asset, profile, res, p, state_all, dp):
     s = p.get("setup") or {}
     pcfg = config.PROFILES[profile]
 
+    def _notify(kind, title, message, **kw):
+        notify(asset, kind, title, message, profile=profile, **kw)
+
     # ---- data gate transitions (once each way, never every run) ----
     if st["last_gate_ok"] is not None and st["last_gate_ok"] != gate_ok:
         if not gate_ok:
             reason = res["data_quality"]["hard_blockers"][0]
-            notify(asset, "DATA_GATE_CLOSED", f"⏸ {asset} {profile}: trading suspended",
+            _notify("DATA_GATE_CLOSED", f"⏸ {asset} {profile}: trading suspended",
                    f"{reason}\nNo signals will be issued until data is fresh.",
                    tags=["pause_button"])
             # a suspended market cannot manage an open idea
             if st["status"] in ("PENDING", "ACTIVE"):
                 st["status"] = "IDLE"
         else:
-            notify(asset, "DATA_GATE_OPEN", f"▶ {asset} {profile}: data live again",
+            _notify("DATA_GATE_OPEN", f"▶ {asset} {profile}: data live again",
                    f"Fresh data restored. Price {fmt(price, dp)}.", tags=["arrow_forward"])
     st["last_gate_ok"] = gate_ok
 
@@ -144,7 +147,7 @@ def process(asset, profile, res, p, state_all, dp):
     # ---- structure / sweep transitions ----
     ev = (p.get("structure_event") or {}).get("event")
     if ev and ev not in ("NO_BREAK", "INSUFFICIENT_DATA") and ev != st["last_structure_event"]:
-        notify(asset, "BOS_CHOCH", f"{asset} {profile}: {ev.replace('_', ' ').title()}",
+        _notify("BOS_CHOCH", f"{asset} {profile}: {ev.replace('_', ' ').title()}",
                f"{ev.replace('_', ' ').lower()} on "
                f"{(p.get('structure_event') or {}).get('timeframe')}. "
                f"Price {fmt(price, dp)}", tags=["chart_with_upwards_trend"])
@@ -154,7 +157,7 @@ def process(asset, profile, res, p, state_all, dp):
     sweep_key = f"{sweeps[0]['type']}@{sweeps[0]['level']:.4f}" if sweeps else None
     if sweep_key and sweep_key != st["last_sweep"]:
         sw = sweeps[0]
-        notify(asset, "LIQUIDITY_SWEEP", f"{asset} {profile}: Liquidity Sweep",
+        _notify("LIQUIDITY_SWEEP", f"{asset} {profile}: Liquidity Sweep",
                f"{sw['type'].replace('_', ' ')} @ {fmt(sw['level'], dp)} "
                f"({sw['bars_ago']} bars ago, {sw['penetration_atr']} ATR) "
                f"→ {sw['implication']}", tags=["mag"])
@@ -172,7 +175,7 @@ def process(asset, profile, res, p, state_all, dp):
             for i, t in enumerate(tg[:3]):
                 st[f"tp{i+1}"] = t["price"]
             emoji = "🟢" if decision == "LONG" else "🔴"
-            notify(asset, "NEW_SIGNAL",
+            _notify("NEW_SIGNAL",
                    f"{emoji} {asset} {profile} {decision} ({p['confluence_score']}/100)",
                    f"Entry {fmt(s['entry'], dp)} ({s.get('entry_type')})\n"
                    f"Stop {fmt(s['selected_stop'], dp)} ({s.get('stop_distance_atr')} ATR)\n"
@@ -189,7 +192,7 @@ def process(asset, profile, res, p, state_all, dp):
             tg = s.get("targets") or []
             for i, t in enumerate(tg[:3]):
                 st[f"tp{i+1}"] = t["price"]
-            notify(asset, "SETUP_ARMED",
+            _notify("SETUP_ARMED",
                    f"⏳ {asset} {profile} {p['direction_considered']} setup armed",
                    f"Resting limit {fmt(s['entry'], dp)} — price is "
                    f"{fmt(price, dp)}, not there yet.\n"
@@ -211,19 +214,19 @@ def process(asset, profile, res, p, state_all, dp):
 
         if reached and still_valid:
             st["status"] = "ACTIVE"
-            notify(asset, "ZONE_REACHED", f"🎯 {asset} {profile}: entry zone reached",
+            _notify("ZONE_REACHED", f"🎯 {asset} {profile}: entry zone reached",
                    f"Price {fmt(price, dp)} tapped the {d} entry "
                    f"{fmt(st['entry'], dp)}. Stop {fmt(st['stop'], dp)}.",
                    priority="high", tags=["dart"])
         elif not still_valid:
             st["status"] = "IDLE"
-            notify(asset, "INVALIDATED", f"{asset} {profile}: setup invalidated",
+            _notify("INVALIDATED", f"{asset} {profile}: setup invalidated",
                    f"{d} setup no longer qualifies "
                    f"({'; '.join((p.get('blockers') or ['conditions changed'])[:2])}). "
                    f"Price {fmt(price, dp)}.", tags=["x"])
         elif st["bars_pending"] > _expiry_runs(pcfg):
             st["status"] = "IDLE"
-            notify(asset, "EXPIRED", f"{asset} {profile}: setup expired",
+            _notify("EXPIRED", f"{asset} {profile}: setup expired",
                    f"{d} limit at {fmt(st['entry'], dp)} was not reached within "
                    f"{pcfg['expected_hold']} window. Cancelled.", tags=["hourglass"])
 
@@ -233,7 +236,7 @@ def process(asset, profile, res, p, state_all, dp):
             (d == "LONG" and price <= st["stop"]) or
             (d == "SHORT" and price >= st["stop"]))
         if hit_sl:
-            notify(asset, "SL_HIT", f"🛑 {asset} {profile}: stop loss hit",
+            _notify("SL_HIT", f"🛑 {asset} {profile}: stop loss hit",
                    f"Price {fmt(price, dp)} hit stop {fmt(st['stop'], dp)}.",
                    priority="high", tags=["skull"])
             st["status"] = "CLOSED"
@@ -245,7 +248,7 @@ def process(asset, profile, res, p, state_all, dp):
                 reached = (price >= tp) if d == "LONG" else (price <= tp)
                 if reached:
                     st[flag] = True
-                    notify(asset, f"TP{i}_HIT", f"💰 {asset} {profile}: TP{i} reached",
+                    _notify(f"TP{i}_HIT", f"💰 {asset} {profile}: TP{i} reached",
                            f"Price {fmt(price, dp)} hit TP{i} {fmt(tp, dp)}.",
                            priority="high", tags=["moneybag"])
                     if i == 3:

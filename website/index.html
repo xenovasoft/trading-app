@@ -81,6 +81,18 @@
   .z{display:grid;grid-template-columns:1fr auto;gap:8px;padding:6px 0;
     border-bottom:1px solid var(--bd);font-size:12px}
   .z:last-child{border-bottom:none}
+  .hist-row{padding:9px 0;border-bottom:1px solid var(--bd)}
+  .hist-row:last-child{border-bottom:none}
+  .hist-row.expired{opacity:.55}
+  .hist-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px}
+  .hist-dir{font-size:12px;font-weight:700;letter-spacing:.03em}
+  .hist-dir.long{color:var(--grn)} .hist-dir.short{color:var(--red)}
+  .hist-tag{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;letter-spacing:.02em}
+  .hist-tag.active{background:rgba(34,197,94,.16);color:var(--grn)}
+  .hist-tag.old{background:rgba(107,114,128,.2);color:var(--dim)}
+  .hist-time{font-size:11px;color:var(--dim);margin-left:auto}
+  .hist-msg{font-size:12px;color:#c8cddb;line-height:1.4;white-space:pre-line}
+  .hist-row.expired .hist-msg{text-decoration:line-through;text-decoration-color:var(--bd)}
   .zk{color:var(--dim);font-size:11px}
   .zbar{height:4px;background:var(--bd);border-radius:2px;margin-top:4px;overflow:hidden}
   .zbar div{height:100%;background:var(--blu)}
@@ -261,7 +273,7 @@ function zoneRow(z,dp){
     <div class="zk">${esc(z.probability)}</div></div></div>`;
 }
 
-function profileCard(name,r,dp){
+function profileCard(name,r,dp,hist){
   if(!r) return `<div class="prof"><div class="ptop"><span class="pname">${name}</span>
     ${badge(null)}</div><div class="sub">no data yet</div></div>`;
   const sc=r.confluence_score??0;
@@ -299,10 +311,72 @@ function profileCard(name,r,dp){
     ${agR.length?`<div class="sec">Khilaf dalail</div>`+
       agR.map(x=>`<div class="rsn no"><i>−</i><span>${esc(x)}</span></div>`).join(""):""}
 
+    <details ${hist&&hist.length?"open":""}><summary>Trade History · 24h (${hist?hist.length:0})</summary>
+      ${historyHTML(hist,dp)}
+    </details>
+
     <details><summary>Liquidity map (${arr(r.zones).length})</summary>
       ${arr(r.zones).map(z=>zoneRow(z,dp)).join("")||'<div class="sub">none</div>'}
     </details>
   </div>`;
+}
+
+/* Trade History (24h). Groups NEW_SIGNAL alerts by asset+profile. The most
+   recent one per group is the current call; every older one in the SAME
+   group is EXPIRED — a later signal for the same asset+profile always
+   supersedes the previous one, whether it agreed or reversed direction. */
+function extractProfile(row){
+  if(row.profile) return row.profile;
+  // Legacy v2 rows written before the `profile` column existed still have
+  // the profile name as a word in the title, e.g. "BTCUSD SCALP: ...". Old
+  // v1-engine rows never had SWING/SCALP in the title at all — those are
+  // deliberately left unclassifiable (null) so they get filtered out below
+  // rather than silently defaulting into the wrong profile's history.
+  const m=String(row.title||"").match(/\b(SWING|SCALP)\b/);
+  return m?m[1]:null;
+}
+function extractDirection(row){
+  const m=String(row.title||"").match(/\b(LONG|SHORT)\b/);
+  return m?m[1]:null;
+}
+async function fetchHistory(){
+  try{
+    const r=await fetch("/api/history",{cache:"no-store"});
+    if(r.ok){ const j=await r.json(); if(Array.isArray(j)) return j; }
+  }catch(e){/* fall through */}
+  try{
+    const since=new Date(Date.now()-24*3600*1000).toISOString();
+    const {data}=await client.from("alerts").select("id,asset,profile,type,title,message,created_at")
+      .eq("type","NEW_SIGNAL").gte("created_at",since).order("created_at",{ascending:false}).limit(300);
+    return data||[];
+  }catch(e){ return []; }
+}
+function groupHistory(rows){
+  const by={};
+  rows.forEach(r=>{
+    const p=extractProfile(r);
+    if(!p) return; // pre-v2 row with no way to know which profile issued it
+    const key=r.asset+"|"+p;
+    (by[key]=by[key]||[]).push(r);
+  });
+  return by;
+}
+function historyHTML(list,dp){
+  if(!list||!list.length) return `<div class="sub" style="padding:4px 0">Pichle 24 ghante mein koi signal nahi.</div>`;
+  return list.map((row,i)=>{
+    const dir=extractDirection(row);
+    const cls=dir==="LONG"?"long":dir==="SHORT"?"short":"";
+    const active=i===0;
+    return `<div class="hist-row ${active?"":"expired"}">
+      <div class="hist-top">
+        <span class="hist-dir ${cls}">${esc(dir||"—")}</span>
+        ${active?`<span class="hist-tag active">ABHI ACTIVE</span>`
+                :`<span class="hist-tag old">EXPIRED — naya signal aa gaya</span>`}
+        <span class="hist-time">${ago(row.created_at)}</span>
+      </div>
+      <div class="hist-msg">${esc((row.message||"").split("\n")[0])}</div>
+    </div>`;
+  }).join("");
 }
 
 /* Fetch order matters. The same-origin /api/signals route is tried FIRST
@@ -394,10 +468,11 @@ function renderTabs(by){
 }
 
 async function load(){
-  const {data,error}=await fetchSignals();
+  const [{data,error},historyRows]=await Promise.all([fetchSignals(),fetchHistory()]);
   const root=document.getElementById("root");
   if(error){root.innerHTML=`<div class="empty">Error: ${esc(error.message)}</div>`;return;}
   if(!data||!data.length){root.innerHTML='<div class="empty">Waiting for first v2 sync…</div>';return;}
+  const histByKey=groupHistory(historyRows||[]);
 
   const by={};data.forEach(r=>{(by[r.asset]=by[r.asset]||{})[r.profile]=r;});
   const newest=data.reduce((a,b)=>new Date(a.updated_at)>new Date(b.updated_at)?a:b);
@@ -423,7 +498,7 @@ async function load(){
         ${hard.map(b=>`<div>✗ ${esc(b)}</div>`).join("")}
         <div style="color:var(--dim);margin-top:6px">Jab tak data purana hai koi
         signal nahi diya jayega — ye jaan boojh kar hai, koi kharabi nahi.</div></div>`:""}
-      <div class="profiles">${PROFILES.map(p=>profileCard(p,by[a][p],dp)).join("")}</div>
+      <div class="profiles">${PROFILES.map(p=>profileCard(p,by[a][p],dp,histByKey[a+"|"+p])).join("")}</div>
     </div>`;
   }).join("");
 
