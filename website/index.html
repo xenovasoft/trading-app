@@ -90,6 +90,14 @@
   .hist-tag{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;letter-spacing:.02em}
   .hist-tag.active{background:rgba(34,197,94,.16);color:var(--grn)}
   .hist-tag.old{background:rgba(107,114,128,.2);color:var(--dim)}
+  .stamp{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin:2px 0 10px;
+    font-size:12px;color:var(--dim)}
+  .stamp b{color:#c8cddb;font-weight:600}
+  .stamp .st{font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;
+    letter-spacing:.03em}
+  .stamp .st.now{background:rgba(34,197,94,.16);color:var(--grn)}
+  .stamp .st.aging{background:rgba(245,158,11,.16);color:var(--amb)}
+  .stamp .st.old{background:rgba(239,68,68,.16);color:var(--red)}
   .hist-time{font-size:11px;color:var(--dim);margin-left:auto}
   .hist-msg{font-size:12px;color:#c8cddb;line-height:1.4;white-space:pre-line}
   .hist-row.expired .hist-msg{text-decoration:line-through;text-decoration-color:var(--bd)}
@@ -267,6 +275,35 @@ function ago(iso){const s=(Date.now()-new Date(iso).getTime())/1000;
 function badge(d){const m={LONG:"b-long",SHORT:"b-short",WAIT:"b-wait"};
   return `<span class="badge ${m[d]||"b-no"}">${esc(d||"—")}</span>`;}
 
+/* Exact clock time each prediction was generated, plus whether it is the
+   CURRENT one or a leftover from an earlier run.
+
+   This matters because the page polls Supabase every 30s and the live price
+   ticks every 2s, so the screen always LOOKS live — but the analysis behind
+   it only changes when the 15-minute cron runs. Without a per-card stamp a
+   prediction computed an hour ago (a failed cron, a closed market) is
+   visually indistinguishable from one computed a minute ago, which is
+   exactly the situation where acting on it is most costly.
+
+   Thresholds follow the 15-minute cron: one missed run is still plausibly
+   current, two means something is wrong. */
+function predStamp(iso){
+  if(!iso) return `<div class="stamp"><span class="st old">WAQT MALOOM NAHI</span>
+    <span>is prediction ka waqt record nahi hua</span></div>`;
+  const t=new Date(iso), mins=(Date.now()-t.getTime())/60000;
+  const clock=t.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+  const day=t.toLocaleDateString([],{day:"2-digit",month:"short"});
+  let cls,lbl,note;
+  if(mins<=20){ cls="now"; lbl="ABHI KA"; note="ye current prediction hai"; }
+  else if(mins<=45){ cls="aging"; lbl="THORA PURANA";
+    note="engine ka agla run aane wala hai"; }
+  else { cls="old"; lbl="PICHLA"; note="ye purani prediction hai — market band ho sakti hai ya engine ka run miss hua"; }
+  return `<div class="stamp"><span class="st ${cls}">${lbl}</span>
+    <span>Banaya gaya: <b>${esc(clock)}</b> <span class="zk">${esc(day)}</span>
+    · ${esc(ago(iso))}</span>
+    <span class="zk">${esc(note)}</span></div>`;
+}
+
 /* Order-related explanation in Roman Urdu (Urdu written in English letters).
    Trading terms (LONG/SHORT/entry/stop/target) are left in English on purpose —
    they are the words used on every broker platform, so translating them would
@@ -341,6 +378,7 @@ function profileCard(name,r,dp,hist){
 
   return `<div class="prof">
     <div class="ptop"><span class="pname">${name} · ${esc(r.expected_hold||"")}</span>${badge(r.decision)}</div>
+    ${predStamp(r.updated_at)}
     ${actionBanner(r)}
     ${directionLine(r)}
     <div class="kv"><span>Confluence <span class="zk">kitne point mile</span></span><span>${sc}/100 (${r.confirmations_passed??"—"}/${r.confirmations_total??"—"})
