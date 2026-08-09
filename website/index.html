@@ -65,13 +65,34 @@
   .zbar div{height:100%;background:var(--blu)}
   .side-buy{color:var(--grn)} .side-sell{color:var(--red)}
   .empty{text-align:center;color:var(--dim);padding:40px 0}
+  .hright{display:flex;align-items:center;gap:10px}
+  #refresh{appearance:none;-webkit-appearance:none;cursor:pointer;
+    background:var(--card2);color:var(--tx);border:1px solid var(--bd);
+    border-radius:999px;padding:7px 14px;font-size:12px;font-weight:600;
+    font-family:inherit;display:inline-flex;align-items:center;gap:6px;
+    transition:background .15s,border-color .15s;-webkit-tap-highlight-color:transparent}
+  #refresh:hover:not(:disabled){background:#232838;border-color:#3a4152}
+  #refresh:active:not(:disabled){transform:scale(.97)}
+  #refresh:disabled{opacity:.55;cursor:default}
+  #refresh svg{width:13px;height:13px;display:block}
+  #refresh.busy svg{animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
 
 <header>
   <div><h1>Signal Engine v2</h1><div class="sub" id="sub">loading…</div></div>
-  <div class="sub" id="age"></div>
+  <div class="hright">
+    <div class="sub" id="age"></div>
+    <button id="refresh" type="button" title="Re-read the latest stored analysis">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>
+      </svg>
+      <span id="refreshLabel">Refresh</span>
+    </button>
+  </div>
 </header>
 <div id="root"><div class="empty">Loading…</div></div>
 <div class="foot" id="foot"></div>
@@ -95,20 +116,25 @@ function ago(iso){const s=(Date.now()-new Date(iso).getTime())/1000;
 function badge(d){const m={LONG:"b-long",SHORT:"b-short",WAIT:"b-wait"};
   return `<span class="badge ${m[d]||"b-no"}">${esc(d||"—")}</span>`;}
 
-/* The headline sentence: what side was evaluated, and what the engine decided
-   about it. This is the thing that was previously buried in a collapsed panel. */
+/* Order-related explanation in Roman Urdu (Urdu written in English letters).
+   Trading terms (LONG/SHORT/entry/stop/target) are left in English on purpose —
+   they are the words used on every broker platform, so translating them would
+   make the screen harder to match against an actual order ticket. */
 function directionLine(r){
   const dir=r.direction_considered, dec=r.decision;
-  if(!dir) return `<div class="dirline">No directional case evaluated — the data
-    gate blocked analysis before a side could be assessed.</div>`;
+  if(!dir) return `<div class="dirline">Koi direction check nahi hui — data
+    purana hone ki wajah se analysis rok di gayi.</div>`;
   const cls=dir==="LONG"?"long":"short";
-  const word=dir==="LONG"?"buying":"selling";
+  const word=dir==="LONG"?"khareedne":"bechne";
   let verdict;
-  if(dec===dir) verdict=`<b class="${cls}">Take the ${dir}</b> — every gate passed and price is at the entry.`;
-  else if(dec==="WAIT") verdict=`<b class="${cls}">${dir} setup is armed</b> — all gates passed, but price has not reached the entry yet, so the order rests.`;
-  else verdict=`<b class="${cls}">${dir} was the stronger case</b>, but it is <b>rejected</b> — see gate failures below.`;
-  return `<div class="dirline">The engine scored both sides and found the
-    <b class="${cls}">${esc(dir)}</b> (${word}) case stronger. ${verdict}</div>`;
+  if(dec===dir)
+    verdict=`<b class="${cls}">${dir} le sakte hain</b> — sab conditions poori hain aur price entry par hai.`;
+  else if(dec==="WAIT")
+    verdict=`<b class="${cls}">${dir} setup tayyar hai</b> — sab conditions poori hain, lekin price abhi entry tak nahi pohancha, is liye order pending rakha hai.`;
+  else
+    verdict=`<b class="${cls}">${dir} ka case zyada mazboot tha</b>, lekin ye <b>reject</b> ho gaya — wajohat neeche dekhein.`;
+  return `<div class="dirline">Engine ne dono sides ka jaiza liya aur
+    <b class="${cls}">${esc(dir)}</b> (${word}) ka case behtar paya. ${verdict}</div>`;
 }
 
 function zoneRow(z,dp){
@@ -130,34 +156,34 @@ function profileCard(name,r,dp){
   const col=sc>=70?"var(--grn)":sc>=50?"var(--amb)":"var(--red)";
   const forR=arr(r.reasons_for), agR=arr(r.reasons_against), blk=arr(r.blockers);
   const rows=[];
-  if(r.entry!=null) rows.push(`<tr><td>Entry <span class="zk">${esc(r.entry_type||"")}</span></td><td>${f(r.entry,dp)}</td></tr>`);
-  if(r.stop!=null) rows.push(`<tr><td>Stop <span class="zk">${r.stop_atr} ATR</span></td><td>${f(r.stop,dp)}</td></tr>`);
+  if(r.entry!=null) rows.push(`<tr><td>Entry <span class="zk">yahan order lagayein · ${esc(r.entry_type||"")}</span></td><td>${f(r.entry,dp)}</td></tr>`);
+  if(r.stop!=null) rows.push(`<tr><td>Stop loss <span class="zk">yahan nikal jayein · ${r.stop_atr} ATR</span></td><td>${f(r.stop,dp)}</td></tr>`);
   [1,2,3].forEach(i=>{const p=r["tp"+i];if(p!=null)
-    rows.push(`<tr><td>T${i} <span class="zk">${esc(i===1?(r.tp1_anchor||""):"")}</span></td>
+    rows.push(`<tr><td>Target ${i} <span class="zk">${esc(i===1?(r.tp1_anchor||""):"")}</span></td>
       <td>${f(p,dp)} <span class="zk">${r["tp"+i+"_rr"]??"—"}R</span></td></tr>`);});
-  if(r.primary_rr!=null) rows.push(`<tr><td>R:R (T1)</td><td>${r.primary_rr}</td></tr>`);
-  if(r.lots!=null) rows.push(`<tr><td>Size</td><td>${r.lots} lots</td></tr>`);
+  if(r.primary_rr!=null) rows.push(`<tr><td>Risk : Reward <span class="zk">Target 1 tak</span></td><td>${r.primary_rr}</td></tr>`);
+  if(r.lots!=null) rows.push(`<tr><td>Position size <span class="zk">kitna lena hai</span></td><td>${r.lots} lots</td></tr>`);
 
   return `<div class="prof">
     <div class="ptop"><span class="pname">${name} · ${esc(r.expected_hold||"")}</span>${badge(r.decision)}</div>
     ${directionLine(r)}
-    <div class="kv"><span>Confluence</span><span>${sc}/100 (${r.confirmations_passed??"—"}/${r.confirmations_total??"—"})
-      ${r.counter_trend?' <b style="color:var(--amb)">counter-trend</b>':""}</span></div>
+    <div class="kv"><span>Confluence <span class="zk">kitne point mile</span></span><span>${sc}/100 (${r.confirmations_passed??"—"}/${r.confirmations_total??"—"})
+      ${r.counter_trend?' <b style="color:var(--amb)">trend ke khilaf</b>':""}</span></div>
     <div class="bar"><div style="width:${sc}%;background:${col}"></div></div>
-    <div class="kv"><span>Regime</span><span>${esc(r.regime||"—")} (ADX ${r.adx??"—"})</span></div>
-    <div class="kv"><span>HTF bias</span><span>${esc(r.htf_bias||"—")}</span></div>
+    <div class="kv"><span>Market ka mizaj</span><span>${esc(r.regime||"—")} (ADX ${r.adx??"—"})</span></div>
+    <div class="kv"><span>Bara trend (HTF)</span><span>${esc(r.htf_bias||"—")}</span></div>
     <div class="kv"><span>Structure</span><span>${esc(r.structure_trend||"—")} · ${esc(r.structure_event||"—")}</span></div>
-    <div class="kv"><span>Premium/discount</span><span>${esc(r.pd_label||"—")} (${r.pd_position??"—"})</span></div>
+    <div class="kv"><span>Premium / Discount</span><span>${esc(r.pd_label||"—")} (${r.pd_position??"—"})</span></div>
     ${rows.length?`<table class="lvls">${rows.join("")}</table>`:""}
-    ${r.invalidation?`<div class="inval"><b>Invalidation:</b> ${esc(r.invalidation)}</div>`:""}
+    ${r.invalidation?`<div class="inval"><b>Kab ghalat sabit hoga:</b> ${esc(r.invalidation)}</div>`:""}
 
-    ${blk.length?`<div class="sec">Why it is not a trade</div>`+
+    ${blk.length?`<div class="sec">Ye trade kyun nahi hai</div>`+
       blk.map(b=>`<div class="rsn blk"><i>✗</i><span>${esc(b)}</span></div>`).join(""):""}
 
-    ${forR.length?`<div class="sec">Evidence for the ${esc(r.direction_considered||"")} case</div>`+
+    ${forR.length?`<div class="sec">${esc(r.direction_considered||"")} ke haq main dalail</div>`+
       forR.map(x=>`<div class="rsn ok"><i>+</i><span>${esc(x)}</span></div>`).join(""):""}
 
-    ${agR.length?`<div class="sec">Evidence against</div>`+
+    ${agR.length?`<div class="sec">Khilaf dalail</div>`+
       agR.map(x=>`<div class="rsn no"><i>−</i><span>${esc(x)}</span></div>`).join(""):""}
 
     <details><summary>Liquidity map (${arr(r.zones).length})</summary>
@@ -204,21 +230,48 @@ async function load(){
     return `<div class="asset">
       <div class="arow"><div><div class="aname">${esc(a)}</div></div>
         <div class="price">${f(any.price,dp)}</div></div>
-      ${!gateOk?`<div class="gate"><b>DATA GATE FAILED — trading suspended</b>
+      ${!gateOk?`<div class="gate"><b>DATA PURANA HAI — trading band</b>
         ${hard.map(b=>`<div>✗ ${esc(b)}</div>`).join("")}
-        <div style="color:var(--dim);margin-top:6px">No signal is issued while the
-        feed is stale — this is deliberate, not a fault.</div></div>`:""}
+        <div style="color:var(--dim);margin-top:6px">Jab tak data purana hai koi
+        signal nahi diya jayega — ye jaan boojh kar hai, koi kharabi nahi.</div></div>`:""}
       <div class="profiles">${PROFILES.map(p=>profileCard(p,by[a][p],dp)).join("")}</div>
     </div>`;
   }).join("");
 
-  document.getElementById("foot").innerHTML=`<b>Not financial advice.</b>
-    confluence_score is a weighted confirmation-density ratio, <b>not</b> a calibrated
-    probability — no component has been validated against realised trade outcomes.
-    Position sizes assume the configured account equity.<br><br>
-    <b>Unavailable data</b> (cannot be inferred from OHLCV): order book · open interest ·
-    liquidation clusters · live bid-ask spread · tick-level volume · futures roll calendar.`;
+  document.getElementById("foot").innerHTML=`<b>Ye financial advice nahi hai.</b>
+    Confluence score sirf confirmations ka weighted ratio hai — ye <b>probability
+    nahi</b> hai. Abhi tak kisi bhi hissay ko real trade results ke against test
+    nahi kiya gaya. Position size configured account equity par based hai, apni
+    asal equity config me daalna zaroori hai.<br><br>
+    <b>Ye data mojood nahi</b> (OHLCV se nikala nahi ja sakta): order book ·
+    open interest · liquidation clusters · live bid-ask spread · tick volume ·
+    futures roll calendar.`;
 }
+/* Manual refresh. This re-reads the latest analysis already stored in
+   Supabase — it does NOT re-run the engine. New analysis is produced by the
+   GitHub Actions cron every 15 minutes, so pressing this more often than that
+   will legitimately show the same numbers. The age indicator is the honest
+   signal of how fresh the underlying data actually is. */
+let refreshing=false;
+async function manualRefresh(){
+  if(refreshing) return;
+  refreshing=true;
+  const btn=document.getElementById("refresh");
+  const lbl=document.getElementById("refreshLabel");
+  btn.disabled=true; btn.classList.add("busy"); lbl.textContent="Refreshing";
+  const started=Date.now();
+  try{ await load(); }
+  finally{
+    // hold the spinner briefly so a fast refresh still reads as a response
+    const wait=Math.max(0,450-(Date.now()-started));
+    setTimeout(()=>{
+      btn.disabled=false; btn.classList.remove("busy"); lbl.textContent="Refresh";
+      refreshing=false;
+    },wait);
+  }
+}
+document.getElementById("refresh").addEventListener("click",manualRefresh);
+
 load();setInterval(load,30000);
 </script>
 </body>
