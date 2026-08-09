@@ -65,6 +65,21 @@
   .zbar div{height:100%;background:var(--blu)}
   .side-buy{color:var(--grn)} .side-sell{color:var(--red)}
   .empty{text-align:center;color:var(--dim);padding:40px 0}
+  .tabs{display:flex;gap:8px;overflow-x:auto;padding:0 4px 14px;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{flex:0 0 auto;cursor:pointer;background:var(--card);color:var(--dim);
+    border:1px solid var(--bd);border-radius:999px;padding:8px 14px;
+    font-size:12.5px;font-weight:600;font-family:inherit;white-space:nowrap;
+    display:inline-flex;align-items:center;gap:7px;
+    transition:background .15s,color .15s,border-color .15s;
+    -webkit-tap-highlight-color:transparent}
+  .tab:hover{background:var(--card2);color:var(--tx)}
+  .tab.on{background:#232838;color:var(--tx);border-color:#3f4759}
+  .tab .px{font-weight:500;opacity:.7;font-variant-numeric:tabular-nums}
+  .tab .dot{width:7px;height:7px;border-radius:50%;background:var(--gry);flex:0 0 auto}
+  .tab .dot.long{background:var(--grn)} .tab .dot.short{background:var(--red)}
+  .tab .dot.wait{background:var(--amb)} .tab .dot.stale{background:#7f1d1d}
   .hright{display:flex;align-items:center;gap:10px}
   #refresh{appearance:none;-webkit-appearance:none;cursor:pointer;
     background:var(--card2);color:var(--tx);border:1px solid var(--bd);
@@ -94,6 +109,7 @@
     </button>
   </div>
 </header>
+<div class="tabs" id="tabs"></div>
 <div id="root"><div class="empty">Loading…</div></div>
 <div class="foot" id="foot"></div>
 
@@ -213,6 +229,52 @@ async function fetchSignals(){
   }
 }
 
+/* Asset selector. Kept in localStorage so the choice survives the 30s
+   auto-refresh and app restarts — otherwise every poll would snap the view
+   back to "Sab" while you were reading one asset. */
+let selected=localStorage.getItem("selectedAsset")||"ALL";
+
+function pickAsset(a){
+  selected=a;
+  try{localStorage.setItem("selectedAsset",a);}catch(e){}
+  load();
+}
+
+/* One dot per asset summarising its most actionable profile, so the tab row
+   tells you where to look without opening each one. */
+function assetDot(profiles){
+  const rows=Object.values(profiles||{});
+  if(!rows.length) return "";
+  if(rows.some(r=>r.data_gate_ok===false)) return "stale";
+  const decs=rows.map(r=>r.decision);
+  if(decs.includes("LONG")) return "long";
+  if(decs.includes("SHORT")) return "short";
+  if(decs.includes("WAIT")) return "wait";
+  return "";
+}
+
+function renderTabs(by){
+  const el=document.getElementById("tabs");
+  const avail=ORDER.filter(a=>by[a]);
+  if(!avail.length){el.innerHTML="";return;}
+  // if a previously-selected asset disappears from the feed, fall back to Sab
+  if(selected!=="ALL" && !by[selected]) selected="ALL";
+
+  const btns=[`<button class="tab ${selected==="ALL"?"on":""}" data-a="ALL"
+      type="button">Sab</button>`];
+  avail.forEach(a=>{
+    const dp=DP[a]??2;
+    const any=by[a].SWING||by[a].SCALP;
+    const dot=assetDot(by[a]);
+    btns.push(`<button class="tab ${selected===a?"on":""}" data-a="${a}" type="button">
+      <span class="dot ${dot}"></span>${esc(a)}
+      <span class="px">${f(any.price,dp)}</span></button>`);
+  });
+  el.innerHTML=btns.join("");
+  el.querySelectorAll(".tab").forEach(b=>
+    b.addEventListener("click",()=>pickAsset(b.dataset.a)));
+}
+
 async function load(){
   const {data,error}=await fetchSignals();
   const root=document.getElementById("root");
@@ -224,7 +286,10 @@ async function load(){
   document.getElementById("sub").textContent=`${Object.keys(by).length} assets · SWING + SCALP`;
   document.getElementById("age").textContent="updated "+ago(newest.updated_at);
 
-  root.innerHTML=ORDER.filter(a=>by[a]).map(a=>{
+  renderTabs(by);
+  const shown=ORDER.filter(a=>by[a]).filter(a=>selected==="ALL"||a===selected);
+
+  root.innerHTML=shown.map(a=>{
     const any=by[a].SWING||by[a].SCALP, dp=DP[a]??2;
     const gateOk=any.data_gate_ok, hard=arr(any.data_blockers);
     return `<div class="asset">
