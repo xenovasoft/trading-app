@@ -156,6 +156,14 @@
     transition:background .15s,border-color .15s;-webkit-tap-highlight-color:transparent}
   #guideBtn:hover{background:#232838;border-color:#3a4152}
   #guideBtn svg{width:13px;height:13px;display:block}
+  #scalpBtn{appearance:none;-webkit-appearance:none;cursor:pointer;
+    background:var(--card2);color:var(--tx);border:1px solid var(--bd);
+    border-radius:999px;padding:7px 14px;font-size:12px;font-weight:600;
+    font-family:inherit;display:inline-flex;align-items:center;gap:6px;
+    transition:background .15s,border-color .15s;-webkit-tap-highlight-color:transparent}
+  #scalpBtn:hover{background:#232838;border-color:#3a4152}
+  #scalpBtn svg{width:13px;height:13px;display:block}
+  #scalpBtn.on{background:rgba(245,158,11,.16);color:var(--amb);border-color:rgba(245,158,11,.45)}
 
   .backdrop{display:none;position:fixed;inset:0;background:rgba(5,6,9,.72);
     z-index:50;padding:16px;padding-top:max(16px,env(safe-area-inset-top));
@@ -191,6 +199,13 @@
   <div><h1>Signal Engine v2</h1><div class="sub" id="sub">loading…</div></div>
   <div class="hright">
     <div class="sub" id="age"></div>
+    <button id="scalpBtn" type="button" title="Sirf SCALP setups, teeno assets ek saath">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M13 2 4 14h7l-1 8 9-12h-7l1-8z"/>
+      </svg>
+      <span>Scalp</span>
+    </button>
     <button id="guideBtn" type="button" title="Har term ka matlab samjhein">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -450,6 +465,19 @@ function pickAsset(a){
   syncChartToSelection();
 }
 
+/* Scalp scan: one tap shows all 3 assets' SCALP card only, side by side, so
+   a fast-moving opportunity doesn't get missed behind tab-switching or
+   scrolling past a SWING card that isn't relevant right now. */
+let scalpOnly=false;
+function toggleScalpOnly(){
+  scalpOnly=!scalpOnly;
+  if(scalpOnly){ selected="ALL"; try{localStorage.setItem("selectedAsset","ALL");}catch(e){} }
+  document.getElementById("scalpBtn").classList.toggle("on",scalpOnly);
+  if(lastBy) render(lastBy,lastHistByKey);
+  syncChartToSelection();
+}
+document.getElementById("scalpBtn").addEventListener("click",toggleScalpOnly);
+
 /* One dot per asset summarising its most actionable profile, so the tab row
    tells you where to look without opening each one. */
 function assetDot(profiles){
@@ -534,7 +562,9 @@ function renderTabs(by){
 let lastBy=null, lastHistByKey={};
 
 function render(by,histByKey){
-  document.getElementById("sub").textContent=`${Object.keys(by).length} assets · SWING + SCALP`;
+  document.getElementById("sub").textContent=scalpOnly
+    ? `${Object.keys(by).length} assets · SCALP setups only`
+    : `${Object.keys(by).length} assets · SWING + SCALP`;
   renderTabs(by);
   const shown=ORDER.filter(a=>by[a]).filter(a=>selected==="ALL"||a===selected);
 
@@ -555,7 +585,7 @@ function render(by,histByKey){
         ${hard.map(b=>`<div>✗ ${esc(b)}</div>`).join("")}
         <div style="color:var(--dim);margin-top:6px">Jab tak data purana hai koi
         signal nahi diya jayega — ye jaan boojh kar hai, koi kharabi nahi.</div></div>`:""}
-      <div class="profiles">${PROFILES.map(p=>profileCard(p,by[a][p],dp,histByKey[a+"|"+p])).join("")}</div>
+      <div class="profiles">${(scalpOnly?["SCALP"]:PROFILES).map(p=>profileCard(p,by[a][p],dp,histByKey[a+"|"+p])).join("")}</div>
     </div>`;
   }).join("");
 
