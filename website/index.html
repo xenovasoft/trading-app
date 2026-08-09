@@ -98,6 +98,29 @@
   .zbar div{height:100%;background:var(--blu)}
   .side-buy{color:var(--grn)} .side-sell{color:var(--red)}
   .empty{text-align:center;color:var(--dim);padding:40px 0}
+  .chartwrap{background:var(--card);border:1px solid var(--bd);border-radius:14px;
+    padding:14px;margin-bottom:16px}
+  .charttop{display:flex;justify-content:space-between;align-items:center;
+    flex-wrap:wrap;gap:10px;margin-bottom:10px}
+  .charttitle{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+  .charttitle .cname{font-size:15px;font-weight:650}
+  .charttitle .cprice{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums}
+  .livepill{font-size:9.5px;font-weight:700;letter-spacing:.05em;color:var(--grn);
+    background:rgba(34,197,94,.14);border:1px solid rgba(34,197,94,.35);
+    border-radius:999px;padding:2px 7px;display:inline-flex;align-items:center;gap:4px}
+  .livepill .dot{width:5px;height:5px;border-radius:50%;background:var(--grn);
+    animation:pulse 1.6s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.25}}
+  .tfrow{display:flex;gap:6px}
+  .tfbtn{appearance:none;-webkit-appearance:none;cursor:pointer;background:var(--card2);
+    color:var(--dim);border:1px solid var(--bd);border-radius:7px;padding:5px 11px;
+    font-size:11.5px;font-weight:700;font-family:inherit;
+    -webkit-tap-highlight-color:transparent}
+  .tfbtn.on{background:#2a3142;color:var(--tx);border-color:#454e64}
+  .chartbox{width:100%;height:260px}
+  .charterr{color:var(--dim);font-size:12.5px;text-align:center;padding:40px 0}
+  .chart24h{display:flex;gap:16px;margin-top:8px;font-size:11.5px;color:var(--dim);flex-wrap:wrap}
+  .chart24h b{color:var(--tx);font-variant-numeric:tabular-nums}
   .tabs{display:flex;gap:8px;overflow-x:auto;padding:0 4px 14px;
     -webkit-overflow-scrolling:touch;scrollbar-width:none}
   .tabs::-webkit-scrollbar{display:none}
@@ -186,6 +209,18 @@
   </div>
 </header>
 <div class="tabs" id="tabs"></div>
+<div class="chartwrap" id="chartWrap" style="display:none">
+  <div class="charttop">
+    <div class="charttitle">
+      <span class="cname" id="chartName">—</span>
+      <span class="cprice" id="chartPrice">—</span>
+      <span class="livepill" id="livePill"><span class="dot"></span>LIVE</span>
+    </div>
+    <div class="tfrow" id="tfRow"></div>
+  </div>
+  <div class="chartbox" id="chartBox"></div>
+  <div class="chart24h" id="chart24h"></div>
+</div>
 <div id="root"><div class="empty">Loading…</div></div>
 <div class="foot" id="foot"></div>
 
@@ -198,6 +233,7 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <script>
 const SUPABASE_URL="https://vjjnowmsvngijxvkvqhx.supabase.co";
 const SUPABASE_KEY="sb_publishable_FE879GUYSj-Pw1gp1-kZ2g_h9qbtHmP";
@@ -408,7 +444,10 @@ let selected=localStorage.getItem("selectedAsset")||"ALL";
 function pickAsset(a){
   selected=a;
   try{localStorage.setItem("selectedAsset",a);}catch(e){}
-  load();
+  // Cheap: re-render from data already in memory rather than re-hitting
+  // Supabase just to switch which asset is visible.
+  if(lastBy) render(lastBy,lastHistByKey);
+  syncChartToSelection();
 }
 
 /* One dot per asset summarising its most actionable profile, so the tab row
@@ -424,17 +463,39 @@ function assetDot(profiles){
   return "";
 }
 
-/* Price-change tracking. This compares against the price seen on the PREVIOUS
-   poll within this browser session — it is not a tick-by-tick market feed.
-   The underlying number only actually changes when the GitHub Actions cron
-   writes a new row (~every 15 min), so the arrow will often read flat between
-   polls; that is correct, not a bug. prevPrices deliberately does NOT persist
-   across reloads, so a fresh page load never claims a false "change". */
-let prevPrices={};
-function priceDelta(asset,price){
-  const prev=prevPrices[asset];
-  if(prev==null||price==null) return {dir:"flat",abs:0,pct:0,has:false};
-  const abs=price-prev, pct=prev?100*abs/prev:0;
+/* Real-time-ish price ticker. Independent of the 30s Supabase poll: this
+   hits /api/ticker (Kraken for BTC, Yahoo Finance quote for gold/silver)
+   every ~6s, which is what makes the up/down arrows actually live instead
+   of only moving once per 15-minute cron run. tickers/prevTickers do NOT
+   persist across reloads, so a fresh page load never claims a false
+   "change" against stale memory. Falls back to the signals_v2 snapshot
+   price (any.price) wherever a ticker hasn't loaded yet or its fetch failed. */
+let tickers={}, prevTickers={};
+async function fetchTicker(asset){
+  try{
+    const r=await fetch(`/api/ticker?asset=${asset}`,{cache:"no-store"});
+    if(!r.ok) return null;
+    const j=await r.json();
+    return j && j.price!=null ? j : null;
+  }catch(e){ return null; }
+}
+async function pollTickers(){
+  const results=await Promise.all(ORDER.map(a=>fetchTicker(a)));
+  prevTickers=tickers;
+  const next={...tickers};
+  results.forEach((t,i)=>{ if(t) next[ORDER[i]]=t; });
+  tickers=next;
+  if(lastBy) render(lastBy,lastHistByKey);
+  updateChartLivePrice();
+}
+function livePrice(asset,fallback){
+  return tickers[asset]?.price ?? fallback;
+}
+function priceDelta(asset,fallback){
+  const cur=livePrice(asset,fallback);
+  const prev=prevTickers[asset]?.price;
+  if(prev==null||cur==null) return {dir:"flat",abs:0,pct:0,has:false};
+  const abs=cur-prev, pct=prev?100*abs/prev:0;
   return {dir:abs>0?"up":abs<0?"down":"flat",abs,pct,has:true};
 }
 function deltaHTML(d,dp){
@@ -455,43 +516,39 @@ function renderTabs(by){
   avail.forEach(a=>{
     const dp=DP[a]??2;
     const any=by[a].SWING||by[a].SCALP;
+    const price=livePrice(a,any.price);
     const dot=assetDot(by[a]);
     const d=priceDelta(a,any.price);
     const arrow=d.has&&d.dir!=="flat"?(d.dir==="up"?" ▲":" ▼"):"";
     btns.push(`<button class="tab ${selected===a?"on":""}" data-a="${a}" type="button">
       <span class="dot ${dot}"></span>${esc(a)}
-      <span class="px delta-${d.dir}">${f(any.price,dp)}${arrow}</span></button>`);
+      <span class="px delta-${d.dir}">${f(price,dp)}${arrow}</span></button>`);
   });
   el.innerHTML=btns.join("");
   el.querySelectorAll(".tab").forEach(b=>
     b.addEventListener("click",()=>pickAsset(b.dataset.a)));
 }
 
-async function load(){
-  const [{data,error},historyRows]=await Promise.all([fetchSignals(),fetchHistory()]);
-  const root=document.getElementById("root");
-  if(error){root.innerHTML=`<div class="empty">Error: ${esc(error.message)}</div>`;return;}
-  if(!data||!data.length){root.innerHTML='<div class="empty">Waiting for first v2 sync…</div>';return;}
-  const histByKey=groupHistory(historyRows||[]);
+/* lastBy/lastHistByKey cache what fetchAndRender() last pulled from Supabase,
+   so pickAsset() and pollTickers() can re-render without re-fetching. */
+let lastBy=null, lastHistByKey={};
 
-  const by={};data.forEach(r=>{(by[r.asset]=by[r.asset]||{})[r.profile]=r;});
-  const newest=data.reduce((a,b)=>new Date(a.updated_at)>new Date(b.updated_at)?a:b);
+function render(by,histByKey){
   document.getElementById("sub").textContent=`${Object.keys(by).length} assets · SWING + SCALP`;
-  document.getElementById("age").textContent="updated "+ago(newest.updated_at);
-
   renderTabs(by);
   const shown=ORDER.filter(a=>by[a]).filter(a=>selected==="ALL"||a===selected);
 
-  root.innerHTML=shown.map(a=>{
+  document.getElementById("root").innerHTML=shown.map(a=>{
     const any=by[a].SWING||by[a].SCALP, dp=DP[a]??2;
+    const price=livePrice(a,any.price);
     const gateOk=any.data_gate_ok, hard=arr(any.data_blockers);
     const d=priceDelta(a,any.price);
     return `<div class="asset">
       <div class="arow"><div><div class="aname">${esc(a)}</div></div>
         <div class="pricerow">
-          <div class="price ${d.has&&d.dir!=="flat"?"flash":""}">${f(any.price,dp)}</div>
+          <div class="price ${d.has&&d.dir!=="flat"?"flash":""}">${f(price,dp)}</div>
           ${deltaHTML(d,dp)}
-          <div class="sincenote">pichle check se</div>
+          <div class="sincenote">live</div>
         </div>
       </div>
       ${!gateOk?`<div class="gate"><b>DATA PURANA HAI — trading band</b>
@@ -502,11 +559,6 @@ async function load(){
     </div>`;
   }).join("");
 
-  // Update AFTER rendering so this poll's delta compared against the PREVIOUS
-  // one, not against itself.
-  ORDER.forEach(a=>{ if(by[a]){ const any=by[a].SWING||by[a].SCALP;
-    prevPrices[a]=any.price; }});
-
   document.getElementById("foot").innerHTML=`<b>Ye financial advice nahi hai.</b>
     Confluence score sirf confirmations ka weighted ratio hai — ye <b>probability
     nahi</b> hai. Abhi tak kisi bhi hissay ko real trade results ke against test
@@ -515,6 +567,21 @@ async function load(){
     <b>Ye data mojood nahi</b> (OHLCV se nikala nahi ja sakta): order book ·
     open interest · liquidation clusters · live bid-ask spread · tick volume ·
     futures roll calendar.`;
+}
+
+async function fetchAndRender(){
+  const [{data,error},historyRows]=await Promise.all([fetchSignals(),fetchHistory()]);
+  const root=document.getElementById("root");
+  if(error){root.innerHTML=`<div class="empty">Error: ${esc(error.message)}</div>`;return;}
+  if(!data||!data.length){root.innerHTML='<div class="empty">Waiting for first v2 sync…</div>';return;}
+
+  const by={};data.forEach(r=>{(by[r.asset]=by[r.asset]||{})[r.profile]=r;});
+  const newest=data.reduce((a,b)=>new Date(a.updated_at)>new Date(b.updated_at)?a:b);
+  document.getElementById("age").textContent="signal data updated "+ago(newest.updated_at);
+
+  lastBy=by; lastHistByKey=groupHistory(historyRows||[]);
+  render(lastBy,lastHistByKey);
+  syncChartToSelection();
 }
 /* Manual refresh. This re-reads the latest analysis already stored in
    Supabase — it does NOT re-run the engine. New analysis is produced by the
@@ -529,7 +596,7 @@ async function manualRefresh(){
   const lbl=document.getElementById("refreshLabel");
   btn.disabled=true; btn.classList.add("busy"); lbl.textContent="Refreshing";
   const started=Date.now();
-  try{ await load(); }
+  try{ await fetchAndRender(); }
   finally{
     // hold the spinner briefly so a fast refresh still reads as a response
     const wait=Math.max(0,450-(Date.now()-started));
@@ -592,7 +659,109 @@ document.getElementById("guideBackdrop").addEventListener("click",e=>{
 });
 document.addEventListener("keydown",e=>{if(e.key==="Escape") closeGuide();});
 
-load();setInterval(load,30000);
+/* ---------------- CANDLESTICK CHART (Binance/TradingView-style) ---------------- */
+/* Only shown for a single selected asset (not "Sab") — same convention as
+   Binance's own per-pair chart. Historical candles come from /api/candles;
+   the LAST (currently forming) candle is then live-updated on every ticker
+   tick via candleSeries.update(), which is what gives the "watching it move"
+   feel instead of a static picture that only refreshes every 30s. */
+const TF_LIST=["5m","15m","1h","4h","1d"];
+const TF_LABEL={"5m":"5M","15m":"15M","1h":"1H","4h":"4H","1d":"1D"};
+let chartAsset=null, chartTF=localStorage.getItem("chartTF")||"1h";
+let chartApi=null, candleSeries=null, lastCandle=null, chartLoadToken=0;
+
+function initChartOnce(){
+  if(chartApi) return;
+  chartApi=LightweightCharts.createChart(document.getElementById("chartBox"),{
+    layout:{background:{color:"transparent"},textColor:"#8a90a2",fontSize:11},
+    grid:{vertLines:{color:"#1c212e"},horzLines:{color:"#1c212e"}},
+    rightPriceScale:{borderColor:"#262b38"},
+    timeScale:{borderColor:"#262b38",timeVisible:true,secondsVisible:false},
+    crosshair:{mode:LightweightCharts.CrosshairMode.Normal},
+    autoSize:true,
+  });
+  candleSeries=chartApi.addCandlestickSeries({
+    upColor:"#22c55e",downColor:"#ef4444",borderVisible:false,
+    wickUpColor:"#22c55e",wickDownColor:"#ef4444",
+  });
+}
+
+function renderTfRow(){
+  const el=document.getElementById("tfRow");
+  el.innerHTML=TF_LIST.map(tf=>
+    `<button class="tfbtn ${tf===chartTF?"on":""}" data-tf="${tf}" type="button">${TF_LABEL[tf]}</button>`
+  ).join("");
+  el.querySelectorAll(".tfbtn").forEach(b=>b.addEventListener("click",()=>setTF(b.dataset.tf)));
+}
+function setTF(tf){
+  chartTF=tf;
+  try{localStorage.setItem("chartTF",tf);}catch(e){}
+  renderTfRow();
+  loadChartData();
+}
+
+async function loadChartData(){
+  if(!chartAsset) return;
+  const token=++chartLoadToken; // guards against a slow older request landing after a newer one
+  initChartOnce();
+  const box=document.getElementById("chartBox");
+  box.querySelectorAll(".charterr").forEach(n=>n.remove());
+  try{
+    const r=await fetch(`/api/candles?asset=${chartAsset}&tf=${chartTF}`,{cache:"no-store"});
+    const j=await r.json();
+    if(token!==chartLoadToken) return;
+    if(!r.ok||!Array.isArray(j.candles)||!j.candles.length) throw new Error(j.error||"no candles");
+    candleSeries.setData(j.candles);
+    lastCandle=j.candles[j.candles.length-1];
+    chartApi.timeScale().fitContent();
+  }catch(e){
+    if(token!==chartLoadToken) return;
+    box.querySelectorAll(".charterr").forEach(n=>n.remove());
+    const err=document.createElement("div");
+    err.className="charterr";
+    err.textContent="Chart load nahi hua: "+(e&&e.message||e);
+    box.appendChild(err);
+  }
+}
+
+function syncChartToSelection(){
+  const wrap=document.getElementById("chartWrap");
+  if(selected==="ALL"){ wrap.style.display="none"; chartAsset=null; return; }
+  wrap.style.display="";
+  document.getElementById("chartName").textContent=selected;
+  const dp=DP[selected]??2;
+  const snap=lastBy&&lastBy[selected]&&(lastBy[selected].SWING||lastBy[selected].SCALP);
+  document.getElementById("chartPrice").textContent=f(livePrice(selected,snap?snap.price:null),dp);
+  if(chartAsset===selected) return;
+  chartAsset=selected;
+  renderTfRow();
+  loadChartData();
+}
+
+function updateChartLivePrice(){
+  if(!chartAsset) return;
+  const t=tickers[chartAsset];
+  const dp=DP[chartAsset]??2;
+  if(t) document.getElementById("chartPrice").textContent=f(t.price,dp);
+  if(t && candleSeries && lastCandle){
+    const updated={...lastCandle, close:t.price,
+      high:Math.max(lastCandle.high,t.price), low:Math.min(lastCandle.low,t.price)};
+    candleSeries.update(updated);
+    lastCandle=updated;
+  }
+  const el=document.getElementById("chart24h");
+  if(t && t.high24h!=null){
+    const pct=t.changePct24h??0, chCls=pct>0?"up":pct<0?"down":"flat";
+    el.innerHTML=`<span>24h High <b>${f(t.high24h,dp)}</b></span>
+      <span>24h Low <b>${f(t.low24h,dp)}</b></span>
+      <span>24h Change <b class="delta ${chCls}" style="font-size:11.5px">${pct>0?"+":""}${pct.toFixed(2)}%</b></span>`;
+  } else {
+    el.innerHTML="";
+  }
+}
+
+fetchAndRender();setInterval(fetchAndRender,30000);
+pollTickers();setInterval(pollTickers,6000);
 </script>
 </body>
 </html>
