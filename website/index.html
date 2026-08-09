@@ -17,7 +17,15 @@
   .asset{background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:16px;margin-bottom:16px}
   .arow{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
   .aname{font-size:17px;font-weight:650}
-  .price{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums}
+  .price{font-size:24px;font-weight:700;font-variant-numeric:tabular-nums;
+    display:inline-flex;align-items:baseline;gap:8px}
+  .price.flash{animation:flashp .9s ease}
+  @keyframes flashp{0%{color:#fff}100%{color:var(--tx)}}
+  .delta{font-size:13px;font-weight:700;display:inline-flex;align-items:center;
+    gap:2px;font-variant-numeric:tabular-nums}
+  .delta.up{color:var(--grn)} .delta.down{color:var(--red)} .delta.flat{color:var(--dim)}
+  .pricerow{display:flex;flex-direction:column;align-items:flex-end;gap:1px}
+  .sincenote{font-size:10px;color:var(--dim);font-weight:500}
   .inst{font-size:11px;color:var(--dim)}
   .gate{background:rgba(239,68,68,.09);border:1px solid rgba(239,68,68,.35);
     border-radius:10px;padding:10px 12px;margin:12px 0;font-size:12.5px}
@@ -32,7 +40,18 @@
   .b-short{background:rgba(239,68,68,.16);color:var(--red)}
   .b-wait{background:rgba(245,158,11,.16);color:var(--amb)}
   .b-no{background:rgba(107,114,128,.2);color:var(--gry)}
-  .dirline{font-size:13px;margin:6px 0 10px;padding:8px 10px;border-radius:8px;
+  /* Big, unmistakable instruction — the answer to "so what do I actually do".
+     This sits above everything else in the card on purpose. */
+  .action{display:flex;align-items:center;gap:10px;margin:8px 0 10px;
+    padding:12px 14px;border-radius:10px;font-size:17px;font-weight:750;
+    line-height:1.3}
+  .action .ic{font-size:22px;flex:0 0 auto}
+  .action .sm{display:block;font-size:12.5px;font-weight:600;opacity:.85;margin-top:2px}
+  .action.go-long{background:rgba(34,197,94,.15);border:1px solid rgba(34,197,94,.4);color:var(--grn)}
+  .action.go-short{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);color:var(--red)}
+  .action.go-wait{background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);color:var(--amb)}
+  .action.go-no{background:rgba(107,114,128,.15);border:1px solid rgba(107,114,128,.4);color:var(--tx)}
+  .dirline{font-size:15px;line-height:1.5;margin:0 0 10px;padding:9px 11px;border-radius:8px;
     background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25)}
   .dirline b.long{color:var(--grn)} .dirline b.short{color:var(--red)}
   .kv{display:flex;justify-content:space-between;gap:10px;padding:2px 0;font-size:12.5px}
@@ -46,12 +65,14 @@
   .lvls td:first-child{color:var(--dim)}
   .sec{margin-top:12px;margin-bottom:4px;font-size:10.5px;text-transform:uppercase;
     letter-spacing:.07em;color:var(--dim)}
-  .rsn{font-size:12px;margin:3px 0;display:flex;gap:7px;align-items:flex-start}
+  .rsn{font-size:13px;line-height:1.45;margin:4px 0;display:flex;gap:7px;align-items:flex-start}
   .rsn i{font-style:normal;flex:0 0 12px}
   .ok i{color:var(--grn)} .no i{color:var(--red)} .blk i{color:var(--amb)}
   .rsn span{opacity:.9}
-  .warn{font-size:11.5px;color:var(--amb);margin-top:6px}
-  .inval{font-size:11.5px;color:var(--dim);margin-top:6px}
+  .warn{font-size:12.5px;color:var(--amb);margin-top:6px}
+  .inval{font-size:12.5px;line-height:1.5;color:var(--dim);margin-top:8px;
+    padding-top:8px;border-top:1px dashed var(--bd)}
+  .inval b{color:var(--tx)}
   .foot{font-size:11px;color:var(--dim);margin-top:20px;padding:12px;
     background:var(--card);border:1px solid var(--bd);border-radius:10px}
   .foot b{color:var(--amb)}
@@ -77,6 +98,7 @@
   .tab:hover{background:var(--card2);color:var(--tx)}
   .tab.on{background:#232838;color:var(--tx);border-color:#3f4759}
   .tab .px{font-weight:500;opacity:.7;font-variant-numeric:tabular-nums}
+  .tab .px.delta-up{color:var(--grn);opacity:1} .tab .px.delta-down{color:var(--red);opacity:1}
   .tab .dot{width:7px;height:7px;border-radius:50%;background:var(--gry);flex:0 0 auto}
   .tab .dot.long{background:var(--grn)} .tab .dot.short{background:var(--red)}
   .tab .dot.wait{background:var(--amb)} .tab .dot.stale{background:#7f1d1d}
@@ -92,6 +114,40 @@
   #refresh svg{width:13px;height:13px;display:block}
   #refresh.busy svg{animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
+  #guideBtn{appearance:none;-webkit-appearance:none;cursor:pointer;
+    background:var(--card2);color:var(--tx);border:1px solid var(--bd);
+    border-radius:999px;padding:7px 14px;font-size:12px;font-weight:600;
+    font-family:inherit;display:inline-flex;align-items:center;gap:6px;
+    transition:background .15s,border-color .15s;-webkit-tap-highlight-color:transparent}
+  #guideBtn:hover{background:#232838;border-color:#3a4152}
+  #guideBtn svg{width:13px;height:13px;display:block}
+
+  .backdrop{display:none;position:fixed;inset:0;background:rgba(5,6,9,.72);
+    z-index:50;padding:16px;padding-top:max(16px,env(safe-area-inset-top));
+    -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px)}
+  .backdrop.open{display:flex;align-items:flex-end;justify-content:center}
+  @media(min-width:640px){.backdrop.open{align-items:center}}
+  .modal{background:var(--card);border:1px solid var(--bd);border-radius:16px 16px 0 0;
+    max-width:560px;width:100%;max-height:85vh;overflow-y:auto;
+    padding:18px 18px calc(env(safe-area-inset-bottom) + 20px)}
+  @media(min-width:640px){.modal{border-radius:16px;max-height:80vh}}
+  .modtop{display:flex;justify-content:space-between;align-items:center;
+    margin-bottom:14px;position:sticky;top:-18px;background:var(--card);
+    padding:18px 0 10px;margin-top:-18px}
+  .modtop h2{font-size:17px;margin:0}
+  #closeGuide{appearance:none;-webkit-appearance:none;cursor:pointer;
+    background:var(--card2);color:var(--dim);border:1px solid var(--bd);
+    border-radius:999px;width:30px;height:30px;font-size:16px;line-height:1;
+    -webkit-tap-highlight-color:transparent}
+  .term{margin-bottom:16px}
+  .term h3{font-size:14px;margin:0 0 4px;color:var(--tx);display:flex;align-items:center;gap:8px}
+  .term h3 .tag{font-size:10px;font-weight:700;color:var(--dim);background:var(--card2);
+    border:1px solid var(--bd);border-radius:6px;padding:1px 6px}
+  .term p{font-size:13px;line-height:1.55;color:#c8cddb;margin:0}
+  .term p b{color:var(--tx)}
+  .gsec{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);
+    margin:18px 0 8px;padding-top:10px;border-top:1px solid var(--bd)}
+  .gsec:first-child{margin-top:0;padding-top:0;border-top:none}
 </style>
 </head>
 <body>
@@ -100,6 +156,14 @@
   <div><h1>Signal Engine v2</h1><div class="sub" id="sub">loading…</div></div>
   <div class="hright">
     <div class="sub" id="age"></div>
+    <button id="guideBtn" type="button" title="Har term ka matlab samjhein">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <circle cx="12" cy="12" r="9"/><path d="M9.5 9.2a2.5 2.5 0 0 1 4.9.8c0 1.6-2.4 2-2.4 3.5"/>
+        <circle cx="12" cy="17" r=".6" fill="currentColor" stroke="none"/>
+      </svg>
+      <span>Guide</span>
+    </button>
     <button id="refresh" type="button" title="Re-read the latest stored analysis">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -112,6 +176,14 @@
 <div class="tabs" id="tabs"></div>
 <div id="root"><div class="empty">Loading…</div></div>
 <div class="foot" id="foot"></div>
+
+<div class="backdrop" id="guideBackdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Trade Guide">
+    <div class="modtop"><h2>Trade Guide</h2>
+      <button id="closeGuide" type="button" aria-label="Band karein">✕</button></div>
+    <div id="guideBody"></div>
+  </div>
+</div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <script>
@@ -153,6 +225,30 @@ function directionLine(r){
     <b class="${cls}">${esc(dir)}</b> (${word}) ka case behtar paya. ${verdict}</div>`;
 }
 
+/* The big instruction banner — this is the direct answer to "ab karna kya
+   hai". directionLine() below stays as the shorter supporting explanation. */
+function actionBanner(r){
+  const dir=r.direction_considered, dec=r.decision, dp=DP[r.asset]??2;
+  if(!dir) return `<div class="action go-no"><span class="ic">🚫</span>
+    <div>Koi trade nahi<span class="sm">Data purana hai, engine ne check hi nahi kiya</span></div></div>`;
+  if(dec===dir){
+    const cls=dir==="LONG"?"go-long":"go-short";
+    const ic=dir==="LONG"?"🟢":"🔴";
+    return `<div class="action ${cls}"><span class="ic">${ic}</span>
+      <div>${dir} KAREIN — ${f(r.entry,dp)} par order lagayein
+      <span class="sm">Stop Loss ${f(r.stop,dp)} · Target 1: ${f(r.tp1,dp)}</span></div></div>`;
+  }
+  if(dec==="WAIT"){
+    const cls=dir==="LONG"?"go-long":"go-short";
+    return `<div class="action go-wait"><span class="ic">⏳</span>
+      <div>ABHI RUKEIN, ORDER TAIYAR HAI
+      <span class="sm">${dir} tab trigger hoga jab price ${f(r.entry,dp)} tak pohanche (abhi ${f(r.price,dp)} hai)</span></div></div>`;
+  }
+  return `<div class="action go-no"><span class="ic">🚫</span>
+    <div>KUCH NA KAREIN — ye trade valid nahi
+    <span class="sm">${dir} ka case dekha gaya tha lekin conditions poori nahi huin</span></div></div>`;
+}
+
 function zoneRow(z,dp){
   const side=z.side==="buy_side"?"side-buy":"side-sell";
   const lbl=z.side==="buy_side"?"buy-side ▲":"sell-side ▼";
@@ -182,6 +278,7 @@ function profileCard(name,r,dp){
 
   return `<div class="prof">
     <div class="ptop"><span class="pname">${name} · ${esc(r.expected_hold||"")}</span>${badge(r.decision)}</div>
+    ${actionBanner(r)}
     ${directionLine(r)}
     <div class="kv"><span>Confluence <span class="zk">kitne point mile</span></span><span>${sc}/100 (${r.confirmations_passed??"—"}/${r.confirmations_total??"—"})
       ${r.counter_trend?' <b style="color:var(--amb)">trend ke khilaf</b>':""}</span></div>
@@ -253,6 +350,25 @@ function assetDot(profiles){
   return "";
 }
 
+/* Price-change tracking. This compares against the price seen on the PREVIOUS
+   poll within this browser session — it is not a tick-by-tick market feed.
+   The underlying number only actually changes when the GitHub Actions cron
+   writes a new row (~every 15 min), so the arrow will often read flat between
+   polls; that is correct, not a bug. prevPrices deliberately does NOT persist
+   across reloads, so a fresh page load never claims a false "change". */
+let prevPrices={};
+function priceDelta(asset,price){
+  const prev=prevPrices[asset];
+  if(prev==null||price==null) return {dir:"flat",abs:0,pct:0,has:false};
+  const abs=price-prev, pct=prev?100*abs/prev:0;
+  return {dir:abs>0?"up":abs<0?"down":"flat",abs,pct,has:true};
+}
+function deltaHTML(d,dp){
+  if(!d.has||d.dir==="flat") return `<span class="delta flat">—</span>`;
+  const arrow=d.dir==="up"?"▲":"▼";
+  return `<span class="delta ${d.dir}">${arrow} ${f(Math.abs(d.abs),dp)} (${d.pct>0?"+":""}${d.pct.toFixed(2)}%)</span>`;
+}
+
 function renderTabs(by){
   const el=document.getElementById("tabs");
   const avail=ORDER.filter(a=>by[a]);
@@ -266,9 +382,11 @@ function renderTabs(by){
     const dp=DP[a]??2;
     const any=by[a].SWING||by[a].SCALP;
     const dot=assetDot(by[a]);
+    const d=priceDelta(a,any.price);
+    const arrow=d.has&&d.dir!=="flat"?(d.dir==="up"?" ▲":" ▼"):"";
     btns.push(`<button class="tab ${selected===a?"on":""}" data-a="${a}" type="button">
       <span class="dot ${dot}"></span>${esc(a)}
-      <span class="px">${f(any.price,dp)}</span></button>`);
+      <span class="px delta-${d.dir}">${f(any.price,dp)}${arrow}</span></button>`);
   });
   el.innerHTML=btns.join("");
   el.querySelectorAll(".tab").forEach(b=>
@@ -292,9 +410,15 @@ async function load(){
   root.innerHTML=shown.map(a=>{
     const any=by[a].SWING||by[a].SCALP, dp=DP[a]??2;
     const gateOk=any.data_gate_ok, hard=arr(any.data_blockers);
+    const d=priceDelta(a,any.price);
     return `<div class="asset">
       <div class="arow"><div><div class="aname">${esc(a)}</div></div>
-        <div class="price">${f(any.price,dp)}</div></div>
+        <div class="pricerow">
+          <div class="price ${d.has&&d.dir!=="flat"?"flash":""}">${f(any.price,dp)}</div>
+          ${deltaHTML(d,dp)}
+          <div class="sincenote">pichle check se</div>
+        </div>
+      </div>
       ${!gateOk?`<div class="gate"><b>DATA PURANA HAI — trading band</b>
         ${hard.map(b=>`<div>✗ ${esc(b)}</div>`).join("")}
         <div style="color:var(--dim);margin-top:6px">Jab tak data purana hai koi
@@ -302,6 +426,11 @@ async function load(){
       <div class="profiles">${PROFILES.map(p=>profileCard(p,by[a][p],dp)).join("")}</div>
     </div>`;
   }).join("");
+
+  // Update AFTER rendering so this poll's delta compared against the PREVIOUS
+  // one, not against itself.
+  ORDER.forEach(a=>{ if(by[a]){ const any=by[a].SWING||by[a].SCALP;
+    prevPrices[a]=any.price; }});
 
   document.getElementById("foot").innerHTML=`<b>Ye financial advice nahi hai.</b>
     Confluence score sirf confirmations ka weighted ratio hai — ye <b>probability
@@ -336,6 +465,57 @@ async function manualRefresh(){
   }
 }
 document.getElementById("refresh").addEventListener("click",manualRefresh);
+
+/* Trade Guide — plain-language explanation of every term on the screen.
+   Roman Urdu for explanations, English kept for the actual trading words
+   (same convention as the rest of the page) so it still matches a real
+   broker's order ticket. */
+const GUIDE=[
+  {sec:"Sabse pehle ye samjhein",items:[
+    {t:"LONG",tag:"buy",p:"Cheez khareedna — aap chahte hain price uper jaye. Profit tab hota hai jab price entry se zyada ho jaye."},
+    {t:"SHORT",tag:"sell",p:"Cheez bechna (bina liye) — aap chahte hain price neeche jaye. Profit tab hota hai jab price entry se kam ho jaye."},
+    {t:"Entry",p:"Wo price jahan order lagana hai. Agar 'limit' likha hai to matlab abhi price wahan nahi hai — order wahan pending rahega jab tak price na aaye."},
+    {t:"Stop Loss (SL)",p:"Wo price jahan aap trade se nikal jayenge taake nuksan mehdood rahe. Agar price yahan pohanch jaye to setup ghalat sabit hota hai — turant bahar nikal jayein."},
+    {t:"Target 1 / 2 / 3",p:"Wo prices jahan profit lena hai. Target 1 sabse qareeb hai, Target 3 sabse door lekin sabse zyada profit wala."},
+  ]},
+  {sec:"Engine kya decide karta hai",items:[
+    {t:"LONG / SHORT (decision)",p:"Sab conditions poori — <b>abhi</b> is direction ka trade lena chahiye."},
+    {t:"WAIT",p:"Direction to sahi hai (sab checks poore), lekin price abhi entry tak nahi pohancha. Order 'armed' hai — jab price wahan aayega tab hi lena hai."},
+    {t:"NO TRADE",p:"Koi conditions poori nahi huin, ya data purana hai. <b>Kuch na karein.</b> Ye sabse zyada aane wala decision hai — engine jaan boojh kar zyada trades nahi deta."},
+  ]},
+  {sec:"Numbers ka matlab",items:[
+    {t:"Risk : Reward (R:R)",p:"Har $1 risk (entry se Stop Loss tak) ke against kitna profit milega (entry se Target tak). R:R 2.0 matlab $1 risk par $2 profit ka mauka."},
+    {t:"Confluence Score",tag:"0-100",p:"Kitne checks (jaise trend, structure, liquidity, RSI) is trade ke haq mein hain, unka weighted total. <b>Ye probability nahi hai</b> — sirf ye batata hai kitne signs saath mein hain, aur kabhi bhi real results se test nahi kiya gaya."},
+    {t:"Position size / Lots",p:"Kitni quantity leni hai, taake agar Stop Loss lag jaye to sirf utna hi nuksan ho jitna aapne account risk % mein set kiya hai (config file mein)."},
+    {t:"ATR",tag:"Average True Range",p:"Market abhi kitni move kar rahi hai (volatility) uska average. Stop Loss aksar ATR ke multiple mein rakha jata hai taake normal market noise se bach sake."},
+  ]},
+  {sec:"Market ka context",items:[
+    {t:"HTF Bias",tag:"Higher Timeframe",p:"Bara trend (Weekly/Daily/4H jaisi badi timeframes se) — BULLISH (upar), BEARISH (neeche), ya MIXED (saaf nahi)."},
+    {t:"Structure · BOS / CHoCH",p:"BOS (Break of Structure) matlab trend continue ho raha hai. CHoCH (Change of Character) matlab trend palatne ke asaar hain."},
+    {t:"Premium / Discount",p:"Price apni recent range ke upper hisse (Premium — mehnga, selling ke liye behtar) mein hai ya lower hisse (Discount — sasta, buying ke liye behtar)."},
+    {t:"Market ka mizaj (Regime)",p:"TRENDING (seedhi chal raha), RANGING (idhar udhar ghoom raha), ya COMPRESSION (bohot tang range, bara move aane wala ho sakta hai)."},
+    {t:"DATA PURANA HAI",p:"Jab market band ho (jaise weekend par gold/silver) to naya data nahi aata. Aisi surat mein engine koi bhi signal nahi deta — ye galti nahi, jaan boojh kar hai."},
+  ]},
+  {sec:"SWING vs SCALP",items:[
+    {t:"SWING",tag:"1-5 din",p:"Bare timeframes (4H/Daily) par based, kam lekin zyada mazboot trades. Zyada der tak hold karna padta hai."},
+    {t:"SCALP",tag:"15min-4h",p:"Chote timeframes (5M/15M) par based, tez trades kam waqt ke liye. Zyada risk buffer chahiye kyunke chote timeframe zyada 'noisy' hote hain."},
+  ]},
+];
+function renderGuide(){
+  document.getElementById("guideBody").innerHTML=GUIDE.map(s=>
+    `<div class="gsec">${esc(s.sec)}</div>`+
+    s.items.map(it=>`<div class="term"><h3>${esc(it.t)}${it.tag?` <span class="tag">${esc(it.tag)}</span>`:""}</h3>
+      <p>${it.p}</p></div>`).join("")
+  ).join("");
+}
+function openGuide(){renderGuide();document.getElementById("guideBackdrop").classList.add("open");}
+function closeGuide(){document.getElementById("guideBackdrop").classList.remove("open");}
+document.getElementById("guideBtn").addEventListener("click",openGuide);
+document.getElementById("closeGuide").addEventListener("click",closeGuide);
+document.getElementById("guideBackdrop").addEventListener("click",e=>{
+  if(e.target.id==="guideBackdrop") closeGuide();
+});
+document.addEventListener("keydown",e=>{if(e.key==="Escape") closeGuide();});
 
 load();setInterval(load,30000);
 </script>
