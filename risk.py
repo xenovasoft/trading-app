@@ -71,18 +71,17 @@ def select_stop(asset, direction, entry, cands, zones, atr_val, profile):
     Taking the widest candidate (the previous behaviour) meant a distant old
     swing dictated the stop, producing 20-40 ATR stops on scalps that always
     tripped the max-width gate. The invalidation that matters is the nearest
-    one that actually breaks the premise.
+    one that actually breaks the premise — so pick by actual distance, not a
+    fixed category order. A fixed order (previously: beyond_entry_zone,
+    beyond_sweep, structural, atr_2x) let a far beyond_sweep/structural level
+    win over a materially tighter atr_2x/volatility candidate just because it
+    came first in the list, reproducing the exact "distant level dictates an
+    oversized stop" failure this function's docstring says was fixed.
     """
     if not cands:
         return None
 
-    # Preference order: the level whose violation genuinely kills the idea.
-    for key in ("beyond_entry_zone", "beyond_sweep", "structural", "atr_2x"):
-        if key in cands:
-            stop, basis = cands[key], key
-            break
-    else:
-        stop, basis = list(cands.values())[0], list(cands.keys())[0]
+    basis, stop = min(cands.items(), key=lambda kv: abs(entry - kv[1]))
 
     # Never tighter than one ATR — below that we are inside normal noise.
     min_dist = 1.0 * atr_val
