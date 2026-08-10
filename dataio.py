@@ -141,7 +141,18 @@ def indicator_availability(n_bars):
 # ----------------------------------------------------------------- ASSETS ---
 
 ASSETS = {
-    "XAUUSD": {"source": "yahoo", "symbol": "GC=F"},
+    # PAXG is a token redeemable 1:1 for physical LBMA gold, so arbitrage
+    # keeps it pinned to real spot gold (verified live: PAXGUSD 4,323.83 vs a
+    # user-reported real spot fill of 4,330 — within 0.15%). GC=F is a
+    # ~4-month-forward COMEX futures contract and was running $60+ (1.5%)
+    # away from spot on the same day, which silently poisoned every
+    # entry/stop/target the engine computed for XAUUSD. No signup, same
+    # Kraken code path already proven on BTCUSD.
+    "XAUUSD": {"source": "kraken", "symbol": "PAXGUSD"},
+    # No tokenized silver exists on Kraken or Binance (checked both), so
+    # XAGUSD has no free spot-tracking proxy available and stays on the
+    # futures proxy — this is why the on-screen futures warning still
+    # applies to silver only.
     "XAGUSD": {"source": "yahoo", "symbol": "SI=F"},
     "BTCUSD": {"source": "kraken", "symbol": "XBTUSD"},
 }

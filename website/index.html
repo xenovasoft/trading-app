@@ -266,13 +266,14 @@ const SUPABASE_URL="https://vjjnowmsvngijxvkvqhx.supabase.co";
 const SUPABASE_KEY="sb_publishable_FE879GUYSj-Pw1gp1-kZ2g_h9qbtHmP";
 const ORDER=["XAUUSD","XAGUSD","BTCUSD"];
 const DP={XAUUSD:2,XAGUSD:3,BTCUSD:2};
-/* Gold/silver have no free real-time SPOT feed wired in — every price, entry,
-   stop and target for these two is computed against a COMEX FUTURES contract
-   used as a stand-in (config.py: CONTRACT_SPECS[...].instrument). Futures can
-   trade tens of dollars away from spot depending on contango/backwardation,
-   so this must stay visible on-screen rather than silently assumed equal.
+/* XAUUSD now reads Kraken PAXGUSD (a token redeemable 1:1 for physical LBMA
+   gold, so arbitrage pins it to real spot — verified within 0.15% of a
+   user-reported live fill, vs the COMEX GC=F futures it used to read, which
+   was $60+/1.5% off spot the same day). XAGUSD still has no free
+   spot-tracking source (no tokenized silver exists on Kraken or Binance —
+   checked both) so it stays on SI=F futures and keeps this warning.
    BTCUSD has no entry here: Kraken XBTUSD is genuinely spot. */
-const FUTURES_PROXY={XAUUSD:"COMEX Gold futures (GC=F)",XAGUSD:"COMEX Silver futures (SI=F)"};
+const FUTURES_PROXY={XAGUSD:"COMEX Silver futures (SI=F)"};
 const PROFILES=["SWING","SCALP"];
 const client=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
@@ -722,7 +723,8 @@ const GUIDE=[
     {t:"Premium / Discount",p:"Price apni recent range ke upper hisse (Premium — mehnga, selling ke liye behtar) mein hai ya lower hisse (Discount — sasta, buying ke liye behtar)."},
     {t:"Market ka mizaj (Regime)",p:"TRENDING (seedhi chal raha), RANGING (idhar udhar ghoom raha), ya COMPRESSION (bohot tang range, bara move aane wala ho sakta hai)."},
     {t:"DATA PURANA HAI",p:"Jab market band ho (jaise weekend par gold/silver) to naya data nahi aata. Aisi surat mein engine koi bhi signal nahi deta — ye galti nahi, jaan boojh kar hai."},
-    {t:"⚠️ Futures price, spot nahi",tag:"XAUUSD / XAGUSD",p:"Gold aur Silver ka koi free live SPOT feed available nahi hai, is liye COMEX futures contract (GC=F / SI=F) ko proxy ke tor par istemal kiya ja raha hai. Futures spot se <b>$30-100+ tak different</b> ho sakta hai. Har price, entry, stop aur target isi futures number par based hai — asal order lagane se pehle apne broker ka live spot price zaroor check karein. <b>BTCUSD is se mutasir nahi</b> — wo Kraken ka asal spot price hai."},
+    {t:"XAUUSD ab spot hai",tag:"fixed",p:"Gold ab Kraken PAXGUSD se price leta hai — ek gold-backed token jo physical LBMA gold ke against 1:1 redeemable hai, is liye ye real spot gold ke bohot qareeb rehta hai (live test mein sirf 0.15% farq). Pehle COMEX futures (GC=F) istemal hota tha jo spot se $60+ (1.5%) door ja sakta tha — is wajah se entry/stop/target ghalat dikh rahe thay."},
+    {t:"⚠️ Silver abhi bhi futures price hai",tag:"XAGUSD",p:"Silver ka koi free SPOT feed nahi mila (Kraken aur Binance dono par koi tokenized silver nahi hai), is liye ye abhi bhi COMEX futures (SI=F) proxy use kar raha hai — spot se different ho sakta hai. Har price, entry, stop, target isi futures number par based hai — asal order lagane se pehle apne broker ka live spot price zaroor check karein."},
   ]},
   {sec:"SWING vs SCALP",items:[
     {t:"SWING",tag:"1-5 din",p:"Bare timeframes (4H/Daily) par based, kam lekin zyada mazboot trades. Zyada der tak hold karna padta hai."},

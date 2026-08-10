@@ -4,11 +4,14 @@
  * Kraken nor Yahoo Finance reliably sends CORS headers for a browser fetch
  * anyway, so this has to be server-side regardless of platform).
  *
- * BTCUSD -> Kraken's Ticker endpoint (true last-trade price, updates on
- * every trade). XAUUSD/XAGUSD -> Yahoo Finance's quote metadata for GC=F /
- * SI=F (COMEX futures, used as a spot proxy elsewhere in this app too;
- * delayed ~15s-a few min depending on Yahoo's feed, not tick-by-tick, but
- * far more live than the 15-minute analysis cron).
+ * BTCUSD -> Kraken XBTUSD. XAUUSD -> Kraken PAXGUSD, a token redeemable 1:1
+ * for physical LBMA gold, so arbitrage keeps it pinned to real spot gold —
+ * verified live within 0.15% of a user-reported real fill, vs the COMEX
+ * GC=F futures this used to read, which was $60+ (1.5%) off spot on the
+ * same day and silently fed that gap into every XAUUSD entry/stop/target
+ * dataio.py computed (see dataio.ASSETS). XAGUSD stays on Yahoo SI=F
+ * futures: no tokenized silver exists on Kraken or Binance (checked both),
+ * so there is no free spot-tracking proxy for it yet.
  *
  * This is intentionally separate from signals_v2.price: that number is a
  * snapshot taken AT THE MOMENT the engine last ran and is what the
@@ -19,8 +22,8 @@
 
 const UA = { "User-Agent": "Mozilla/5.0" };
 
-async function krakenTicker() {
-  const r = await fetch("https://api.kraken.com/0/public/Ticker?pair=XBTUSD");
+async function krakenTicker(pair) {
+  const r = await fetch(`https://api.kraken.com/0/public/Ticker?pair=${pair}`);
   const j = await r.json();
   if (j.error && j.error.length) throw new Error(j.error.join(", "));
   const key = Object.keys(j.result)[0];
@@ -58,8 +61,8 @@ async function yahooTicker(symbol) {
 }
 
 const FETCHERS = {
-  BTCUSD: () => krakenTicker(),
-  XAUUSD: () => yahooTicker("GC=F"),
+  BTCUSD: () => krakenTicker("XBTUSD"),
+  XAUUSD: () => krakenTicker("PAXGUSD"),
   XAGUSD: () => yahooTicker("SI=F"),
 };
 

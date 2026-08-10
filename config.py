@@ -24,7 +24,8 @@ ACCOUNT = {
 # spot CFD, futures and crypto venues.
 CONTRACT_SPECS = {
     "XAUUSD": {"units_per_lot": 100,    "tick_size": 0.01,  "price_dp": 2,
-               "instrument": "COMEX Gold futures (GC=F) used as spot proxy"},
+               "instrument": "Kraken PAXGUSD (physically-redeemable gold "
+                              "token, tracks LBMA spot) used as spot proxy"},
     "XAGUSD": {"units_per_lot": 5000,   "tick_size": 0.005, "price_dp": 3,
                "instrument": "COMEX Silver futures (SI=F) used as spot proxy"},
     "BTCUSD": {"units_per_lot": 1,      "tick_size": 0.1,   "price_dp": 2,

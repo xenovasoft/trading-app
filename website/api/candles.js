@@ -35,10 +35,10 @@ function resampleTo4h(candles) {
   return [...buckets.values()].sort((a, b) => a.time - b.time);
 }
 
-async function krakenCandles(tf) {
+async function krakenCandles(pair, tf) {
   const minutes = KRAKEN_TF[tf];
   const r = await fetch(
-    `https://api.kraken.com/0/public/OHLC?pair=XBTUSD&interval=${minutes}`
+    `https://api.kraken.com/0/public/OHLC?pair=${pair}&interval=${minutes}`
   );
   const j = await r.json();
   if (j.error && j.error.length) throw new Error(j.error.join(", "));
@@ -83,8 +83,11 @@ export default async function handler(req, res) {
   }
   try {
     let candles;
-    if (asset === "BTCUSD") candles = await krakenCandles(tf);
-    else if (asset === "XAUUSD") candles = await yahooCandles("GC=F", tf);
+    // XAUUSD -> Kraken PAXGUSD (spot-tracking gold token, see api/ticker.js
+    // for why), same code path as BTCUSD. XAGUSD has no tokenized-silver
+    // equivalent on Kraken or Binance, so it stays on Yahoo SI=F futures.
+    if (asset === "BTCUSD") candles = await krakenCandles("XBTUSD", tf);
+    else if (asset === "XAUUSD") candles = await krakenCandles("PAXGUSD", tf);
     else if (asset === "XAGUSD") candles = await yahooCandles("SI=F", tf);
     else return res.status(400).json({ error: `unknown asset '${asset}'` });
 
