@@ -65,8 +65,9 @@ def avoid_liquidity(asset, direction, stop, zones, atr_val):
 
 
 def select_stop(asset, direction, entry, cands, zones, atr_val, profile):
-    """Pick the TIGHTEST structurally-defensible stop, floor it at one ATR of
-    noise, push it clear of liquidity, then reject if still too wide.
+    """Pick the TIGHTEST structurally-defensible stop, floor it at
+    profile["stop_floor_atr"] of noise, push it clear of liquidity, then
+    reject if still too wide.
 
     Taking the widest candidate (the previous behaviour) meant a distant old
     swing dictated the stop, producing 20-40 ATR stops on scalps that always
@@ -77,17 +78,25 @@ def select_stop(asset, direction, entry, cands, zones, atr_val, profile):
     win over a materially tighter atr_2x/volatility candidate just because it
     came first in the list, reproducing the exact "distant level dictates an
     oversized stop" failure this function's docstring says was fixed.
+
+    The floor itself was backtested at 1.0 ATR (SCALP, BTCUSD, 180 days):
+    43% of trades were stopped out within 50 minutes for -0.41R expectancy
+    overall. Raising the floor to 2.0 ATR (with max_stop_atr and
+    min_confluence_score raised to match, see config.PROFILES) cut the
+    fast-stopout rate to ~18% and flipped a 30-day out-of-sample slice from
+    -30.8R to +1.6R. 1.0 ATR of noise on a 5M/15M chart is inside normal
+    chop, not a real invalidation — the backtest is what surfaced this,
+    intuition alone did not.
     """
     if not cands:
         return None
 
     basis, stop = min(cands.items(), key=lambda kv: abs(entry - kv[1]))
 
-    # Never tighter than one ATR — below that we are inside normal noise.
-    min_dist = 1.0 * atr_val
+    min_dist = profile.get("stop_floor_atr", 1.0) * atr_val
     if abs(entry - stop) < min_dist:
         stop = entry - min_dist if direction == "LONG" else entry + min_dist
-        basis += " (widened to 1 ATR noise floor)"
+        basis += f" (widened to {profile.get('stop_floor_atr', 1.0)} ATR noise floor)"
 
     stop, moved_from, reason = avoid_liquidity(asset, direction, stop, zones, atr_val)
     dist = abs(entry - stop)

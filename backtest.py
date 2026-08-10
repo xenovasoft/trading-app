@@ -85,7 +85,13 @@ def simulate_exit(bars5, start_idx, direction, entry, stop, target, max_bars):
 
 
 def run(asset="BTCUSD", window_days=180, step_minutes=15, max_steps=None,
-        verbose=True):
+        verbose=True, start_date=None, end_date=None):
+    """start_date/end_date (optional, parsed by pd.Timestamp) slice the
+    replay timeline to an explicit range within the fetched window_days of
+    history, without re-fetching. This is what makes walk-forward possible:
+    fetch a wide window once, tune on one slice, validate on a
+    non-overlapping slice of the SAME cached data.
+    """
     frames = histdata.load_history(asset, window_days=window_days)
 
     # Indicators once over full history (causal -> slicing == recomputing).
@@ -101,8 +107,10 @@ def run(asset="BTCUSD", window_days=180, step_minutes=15, max_steps=None,
     t5 = bars5["time"].values
 
     # Replay starts once the fast frames have enough depth to be meaningful.
-    start_t = bars5["time"].iloc[500]
-    end_t = bars5["time"].iloc[-1]
+    start_t = max(bars5["time"].iloc[500], pd.Timestamp(start_date)) \
+        if start_date else bars5["time"].iloc[500]
+    end_t = min(bars5["time"].iloc[-1], pd.Timestamp(end_date)) \
+        if end_date else bars5["time"].iloc[-1]
     timeline = pd.date_range(start_t, end_t, freq=f"{step_minutes}min")
     if max_steps:
         timeline = timeline[:max_steps]

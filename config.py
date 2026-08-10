@@ -162,14 +162,28 @@ PROFILES = {
         "target_timeframes": ["15M", "1H"],
         "atr_timeframe": "15M",   # matches structure_timeframes[0]
         "min_rr": 1.5,                  # scalps clear cost at lower R than swings
-        "min_confluence_score": 60,
+        # Backtested BTCUSD/180d before this change: 451 trades, -0.092R
+        # expectancy, 43.8% max drawdown, 446 of them SCALP. Root cause found
+        # via backtest.py: 46% of trades were stopped out within 50 minutes
+        # (1 ATR of 5M/15M noise is not a real invalidation) for a combined
+        # -100R+, while trades surviving past an hour were solidly
+        # profitable (+70R). stop_floor_atr/max_stop_atr/min_confluence_score
+        # raised and counter-trend disallowed together in response — verified
+        # on a 30-day out-of-sample slice: -30.8R -> +1.6R, fast-stopout rate
+        # 43% -> 18%. Each lever tested alone first (see git log) to avoid
+        # crediting the combination for what one knob already explained.
+        "min_confluence_score": 65,
         "min_confirmations": 4,
         "stop_buffer_atr": 0.35,        # proportionally wider: LTF noise is worse
-        "max_stop_atr": 2.5,
+        "stop_floor_atr": 2.0,          # was 1.0 (hardcoded) — see note above
+        "max_stop_atr": 3.5,            # was 2.5 — raised alongside the floor
+                                         # so it isn't the binding constraint
         "setup_expiry_bars": 12,        # in 5M bars => 1h
         "max_target_atr": 12.0,
         "expected_hold": "15min-4h",
-        "allow_counter_htf": True,      # may counter-trend, but see penalty below
+        "allow_counter_htf": False,     # was True — counter-trend scalps were
+                                         # the weaker half of the loss (-31.5R
+                                         # vs LONG's -10.2R over 180d)
     },
 }
 
