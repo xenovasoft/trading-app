@@ -30,6 +30,10 @@
   .gate{background:rgba(239,68,68,.09);border:1px solid rgba(239,68,68,.35);
     border-radius:10px;padding:10px 12px;margin:12px 0;font-size:12.5px}
   .gate b{color:var(--red)} .gate div{color:#fca5a5;margin-top:3px}
+  .futwarn{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.4);
+    border-radius:10px;padding:10px 12px;margin:12px 0;font-size:12.5px;color:#fde68a}
+  .futwarn b{color:var(--amb);display:block;margin-bottom:3px;font-size:13px}
+  .futwarn .gap{color:var(--tx);font-weight:700}
   .profiles{display:grid;grid-template-columns:1fr;gap:12px;margin-top:12px}
   @media(min-width:880px){.profiles{grid-template-columns:1fr 1fr}}
   .prof{background:var(--card2);border:1px solid var(--bd);border-radius:12px;padding:14px}
@@ -262,6 +266,13 @@ const SUPABASE_URL="https://vjjnowmsvngijxvkvqhx.supabase.co";
 const SUPABASE_KEY="sb_publishable_FE879GUYSj-Pw1gp1-kZ2g_h9qbtHmP";
 const ORDER=["XAUUSD","XAGUSD","BTCUSD"];
 const DP={XAUUSD:2,XAGUSD:3,BTCUSD:2};
+/* Gold/silver have no free real-time SPOT feed wired in — every price, entry,
+   stop and target for these two is computed against a COMEX FUTURES contract
+   used as a stand-in (config.py: CONTRACT_SPECS[...].instrument). Futures can
+   trade tens of dollars away from spot depending on contango/backwardation,
+   so this must stay visible on-screen rather than silently assumed equal.
+   BTCUSD has no entry here: Kraken XBTUSD is genuinely spot. */
+const FUTURES_PROXY={XAUUSD:"COMEX Gold futures (GC=F)",XAGUSD:"COMEX Silver futures (SI=F)"};
 const PROFILES=["SWING","SCALP"];
 const client=supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
 
@@ -619,6 +630,12 @@ function render(by,histByKey){
           <div class="sincenote">live</div>
         </div>
       </div>
+      ${FUTURES_PROXY[a]?`<div class="futwarn"><b>⚠️ YE FUTURES PRICE HAI, SPOT NAHI</b>
+        Yahan dikhaya gaya price ${esc(FUTURES_PROXY[a])} ka hai (spot ${esc(a)} nahi) —
+        real spot price is se <span class="gap">$30–100+ tak different</span> ho sakta hai
+        jab futures contango/backwardation mein ho. <b style="display:inline;font-size:inherit">
+        Entry/Stop/Target bhi isi futures price ke hisab se calculate hain.</b>
+        Order lagane se pehle apne broker ka apna live spot price zaroor match karein.</div>`:""}
       ${!gateOk?`<div class="gate"><b>DATA PURANA HAI — trading band</b>
         ${hard.map(b=>`<div>✗ ${esc(b)}</div>`).join("")}
         <div style="color:var(--dim);margin-top:6px">Jab tak data purana hai koi
@@ -705,6 +722,7 @@ const GUIDE=[
     {t:"Premium / Discount",p:"Price apni recent range ke upper hisse (Premium — mehnga, selling ke liye behtar) mein hai ya lower hisse (Discount — sasta, buying ke liye behtar)."},
     {t:"Market ka mizaj (Regime)",p:"TRENDING (seedhi chal raha), RANGING (idhar udhar ghoom raha), ya COMPRESSION (bohot tang range, bara move aane wala ho sakta hai)."},
     {t:"DATA PURANA HAI",p:"Jab market band ho (jaise weekend par gold/silver) to naya data nahi aata. Aisi surat mein engine koi bhi signal nahi deta — ye galti nahi, jaan boojh kar hai."},
+    {t:"⚠️ Futures price, spot nahi",tag:"XAUUSD / XAGUSD",p:"Gold aur Silver ka koi free live SPOT feed available nahi hai, is liye COMEX futures contract (GC=F / SI=F) ko proxy ke tor par istemal kiya ja raha hai. Futures spot se <b>$30-100+ tak different</b> ho sakta hai. Har price, entry, stop aur target isi futures number par based hai — asal order lagane se pehle apne broker ka live spot price zaroor check karein. <b>BTCUSD is se mutasir nahi</b> — wo Kraken ka asal spot price hai."},
   ]},
   {sec:"SWING vs SCALP",items:[
     {t:"SWING",tag:"1-5 din",p:"Bare timeframes (4H/Daily) par based, kam lekin zyada mazboot trades. Zyada der tak hold karna padta hai."},
