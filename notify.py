@@ -1,6 +1,10 @@
 import requests
 
-NTFY_TOPIC = "phazes-signals-172ce65ef9b0"
+# Rotated ahead of making the repo public: ntfy.sh topics are unauthenticated,
+# so the old topic (readable in git history once public) could let anyone
+# read or spoof alerts. This is a fresh 24-hex-char random topic, effectively
+# unguessable. Re-subscribe in the ntfy app to keep receiving pushes.
+NTFY_TOPIC = "phazes-signals-e5531977802944c3814698c5"
 NTFY_URL = "https://ntfy.sh"
 
 def push(title, message, priority="default", tags=None):
