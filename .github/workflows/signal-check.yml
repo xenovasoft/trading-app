@@ -16,7 +16,7 @@ concurrency:
 jobs:
   check:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
 
@@ -27,20 +27,16 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # GitHub's scheduled triggers are best-effort and are routinely delayed
-      # under load — observed 30 minutes between updates on a */15 cron, which
-      # silently doubles the age of every "live" prediction on the site.
-      # Looping inside the job decouples evaluation cadence from the
-      # scheduler's punctuality: even if the trigger slips, one job still
-      # produces several evenly-spaced evaluations. `|| true` keeps a single
-      # transient failure (API hiccup) from killing the rest of the run.
+      # REVERTED: a 3x-loop-with-sleep(300) here was tried to paper over
+      # GitHub's scheduler slippage, but it turned each run from ~1 min into
+      # ~11 min. On a */15 cron against a private repo's free 2,000
+      # Actions-minutes/month quota, that exhausts the quota in ~2 days, and
+      # GitHub fails every subsequent job almost instantly once minutes run
+      # out — which is exactly the "failed in 2 seconds, every run" spam this
+      # caused. Back to one run per trigger; the concurrency guard above is
+      # still worth keeping regardless.
       - name: Run signal check (v2 engine)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-        run: |
-          for i in 1 2 3; do
-            echo "--- evaluation $i/3 at $(date -u +%H:%M:%SZ) ---"
-            python run_check_v2.py || true
-            if [ "$i" -lt 3 ]; then sleep 300; fi
-          done
+        run: python run_check_v2.py
