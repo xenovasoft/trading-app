@@ -58,6 +58,7 @@
   .dirline{font-size:15px;line-height:1.5;margin:0 0 10px;padding:9px 11px;border-radius:8px;
     background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25)}
   .dirline b.long{color:var(--grn)} .dirline b.short{color:var(--red)}
+  .action b.long{color:var(--grn)} .action b.short{color:var(--red)}
   .kv{display:flex;justify-content:space-between;gap:10px;padding:2px 0;font-size:12.5px}
   .kv span:first-child{color:var(--dim)}
   .kv span:last-child{text-align:right;font-variant-numeric:tabular-nums}
@@ -374,9 +375,10 @@ function actionBanner(r,livePx){
       <span class="sm">${dir} tab trigger hoga jab price ${f(r.entry,dp)} tak pohanche
       (abhi live price <b>${f(lp,dp)}</b> hai${priceGap(r.entry,lp,dp)})</span></div></div>`;
   }
+  const dcls=dir==="LONG"?"long":"short";
   return `<div class="action go-no"><span class="ic">🚫</span>
-    <div>KUCH NA KAREIN — ye trade valid nahi
-    <span class="sm">${dir} ka case dekha gaya tha lekin conditions poori nahi huin
+    <div>KUCH NA KAREIN — <b class="${dcls}">${dir}</b> ka moqa dekha gaya tha, reject ho gaya
+    <span class="sm">Conditions poori nahi huin, is liye koi order nahi
     · abhi live price: ${f(lp,dp)}</span></div></div>`;
 }
 
