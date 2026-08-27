@@ -401,9 +401,17 @@ function profileCard(name,r,dp,hist,livePx){
   const col=sc>=70?"var(--grn)":sc>=50?"var(--amb)":"var(--red)";
   const forR=arr(r.reasons_for), agR=arr(r.reasons_against), blk=arr(r.blockers);
   const lp=livePx??r.price;
+  /* A NO TRADE setup's entry/stop/target were computed and then rejected —
+     they are the engine's internal working, not an order. Showing them in
+     the same bold table as a real order (label: "yahan order lagayein" =
+     "place your order here") is exactly how a rejected SHORT sitting well
+     below current price gets misread as a live instruction to sell there
+     right now. Actionable (LONG/SHORT/WAIT) keeps the direct order framing;
+     NO TRADE gets neutral wording and lives inside a closed <details>. */
+  const actionable=r.decision==="WAIT"||r.decision===r.direction_considered;
   const rows=[];
-  if(r.entry!=null) rows.push(`<tr><td>Entry <span class="zk">yahan order lagayein · ${esc(r.entry_type||"")}</span></td><td>${f(r.entry,dp)}<span class="zk">${esc(priceGap(r.entry,lp,dp))}</span></td></tr>`);
-  if(r.stop!=null) rows.push(`<tr><td>Stop loss <span class="zk">yahan nikal jayein · ${r.stop_atr} ATR</span></td><td>${f(r.stop,dp)}</td></tr>`);
+  if(r.entry!=null) rows.push(`<tr><td>Entry <span class="zk">${actionable?"yahan order lagayein":"engine ne yahan check kiya (order nahi)"} · ${esc(r.entry_type||"")}</span></td><td>${f(r.entry,dp)}<span class="zk">${esc(priceGap(r.entry,lp,dp))}</span></td></tr>`);
+  if(r.stop!=null) rows.push(`<tr><td>Stop loss <span class="zk">${actionable?"yahan nikal jayein":"agar trade hota to"} · ${r.stop_atr} ATR</span></td><td>${f(r.stop,dp)}</td></tr>`);
   [1,2,3].forEach(i=>{const p=r["tp"+i];if(p!=null)
     rows.push(`<tr><td>Target ${i} <span class="zk">${esc(i===1?(r.tp1_anchor||""):"")}</span></td>
       <td>${f(p,dp)} <span class="zk">${r["tp"+i+"_rr"]??"—"}R</span></td></tr>`);});
@@ -422,7 +430,10 @@ function profileCard(name,r,dp,hist,livePx){
     <div class="kv"><span>Bara trend (HTF)</span><span>${esc(r.htf_bias||"—")}</span></div>
     <div class="kv"><span>Structure</span><span>${esc(r.structure_trend||"—")} · ${esc(r.structure_event||"—")}</span></div>
     <div class="kv"><span>Premium / Discount</span><span>${esc(r.pd_label||"—")} (${r.pd_position??"—"})</span></div>
-    ${rows.length?`<table class="lvls">${rows.join("")}</table>`:""}
+    ${rows.length?(actionable
+      ?`<table class="lvls">${rows.join("")}</table>`
+      :`<details><summary>Engine ka calculation (ye order NAHI hai, sirf reject hua case)</summary>
+         <table class="lvls">${rows.join("")}</table></details>`):""}
     ${r.invalidation?`<div class="inval"><b>Kab ghalat sabit hoga:</b> ${esc(r.invalidation)}</div>`:""}
 
     ${blk.length?`<div class="sec">Ye trade kyun nahi hai</div>`+
