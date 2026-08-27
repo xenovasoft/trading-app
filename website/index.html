@@ -339,8 +339,23 @@ function directionLine(r){
 
 /* The big instruction banner — this is the direct answer to "ab karna kya
    hai". directionLine() below stays as the shorter supporting explanation. */
-function actionBanner(r){
+/* livePx is the real-time ticker price (see livePrice()), NOT r.price —
+   r.price/r.entry/r.stop/r.tp* are all frozen at whenever the 15-min engine
+   last ran. Showing r.price as "abhi X hai" ("current price is X") next to
+   the genuinely live price elsewhere on the same screen was actively
+   misleading whenever the two drift apart (e.g. after a gap in cron runs —
+   BTC moved 65k->79k across one such gap in this app's own history). Every
+   "current price" shown in this banner must be the live one, and the gap
+   to entry must be explicit so it's obvious whether an order is close or
+   effectively stale. */
+function priceGap(entry,livePx,dp){
+  if(entry==null||livePx==null) return "";
+  const diff=livePx-entry, pct=entry?100*diff/entry:0;
+  return ` (${diff>0?"+":""}${f(diff,dp)} / ${pct>0?"+":""}${pct.toFixed(2)}% door)`;
+}
+function actionBanner(r,livePx){
   const dir=r.direction_considered, dec=r.decision, dp=DP[r.asset]??2;
+  const lp=livePx??r.price;
   if(!dir) return `<div class="action go-no"><span class="ic">🚫</span>
     <div>Koi trade nahi<span class="sm">Data purana hai, engine ne check hi nahi kiya</span></div></div>`;
   if(dec===dir){
@@ -348,17 +363,21 @@ function actionBanner(r){
     const ic=dir==="LONG"?"🟢":"🔴";
     return `<div class="action ${cls}"><span class="ic">${ic}</span>
       <div>${dir} KAREIN — ${f(r.entry,dp)} par order lagayein
-      <span class="sm">Stop Loss ${f(r.stop,dp)} · Target 1: ${f(r.tp1,dp)}</span></div></div>`;
+      <span class="sm">Stop Loss ${f(r.stop,dp)} · Target 1: ${f(r.tp1,dp)}
+      <br>Abhi live price: <b>${f(lp,dp)}</b>${priceGap(r.entry,lp,dp)} — order lagane se pehle
+      confirm karein price abhi bhi entry ke qareeb hai</span></div></div>`;
   }
   if(dec==="WAIT"){
     const cls=dir==="LONG"?"go-long":"go-short";
     return `<div class="action go-wait"><span class="ic">⏳</span>
       <div>ABHI RUKEIN, ORDER TAIYAR HAI
-      <span class="sm">${dir} tab trigger hoga jab price ${f(r.entry,dp)} tak pohanche (abhi ${f(r.price,dp)} hai)</span></div></div>`;
+      <span class="sm">${dir} tab trigger hoga jab price ${f(r.entry,dp)} tak pohanche
+      (abhi live price <b>${f(lp,dp)}</b> hai${priceGap(r.entry,lp,dp)})</span></div></div>`;
   }
   return `<div class="action go-no"><span class="ic">🚫</span>
     <div>KUCH NA KAREIN — ye trade valid nahi
-    <span class="sm">${dir} ka case dekha gaya tha lekin conditions poori nahi huin</span></div></div>`;
+    <span class="sm">${dir} ka case dekha gaya tha lekin conditions poori nahi huin
+    · abhi live price: ${f(lp,dp)}</span></div></div>`;
 }
 
 function zoneRow(z,dp){
@@ -373,14 +392,15 @@ function zoneRow(z,dp){
     <div class="zk">${esc(z.probability)}</div></div></div>`;
 }
 
-function profileCard(name,r,dp,hist){
+function profileCard(name,r,dp,hist,livePx){
   if(!r) return `<div class="prof"><div class="ptop"><span class="pname">${name}</span>
     ${badge(null)}</div><div class="sub">no data yet</div></div>`;
   const sc=r.confluence_score??0;
   const col=sc>=70?"var(--grn)":sc>=50?"var(--amb)":"var(--red)";
   const forR=arr(r.reasons_for), agR=arr(r.reasons_against), blk=arr(r.blockers);
+  const lp=livePx??r.price;
   const rows=[];
-  if(r.entry!=null) rows.push(`<tr><td>Entry <span class="zk">yahan order lagayein · ${esc(r.entry_type||"")}</span></td><td>${f(r.entry,dp)}</td></tr>`);
+  if(r.entry!=null) rows.push(`<tr><td>Entry <span class="zk">yahan order lagayein · ${esc(r.entry_type||"")}</span></td><td>${f(r.entry,dp)}<span class="zk">${esc(priceGap(r.entry,lp,dp))}</span></td></tr>`);
   if(r.stop!=null) rows.push(`<tr><td>Stop loss <span class="zk">yahan nikal jayein · ${r.stop_atr} ATR</span></td><td>${f(r.stop,dp)}</td></tr>`);
   [1,2,3].forEach(i=>{const p=r["tp"+i];if(p!=null)
     rows.push(`<tr><td>Target ${i} <span class="zk">${esc(i===1?(r.tp1_anchor||""):"")}</span></td>
@@ -391,7 +411,7 @@ function profileCard(name,r,dp,hist){
   return `<div class="prof">
     <div class="ptop"><span class="pname">${name} · ${esc(r.expected_hold||"")}</span>${badge(r.decision)}</div>
     ${predStamp(r.updated_at)}
-    ${actionBanner(r)}
+    ${actionBanner(r,lp)}
     ${directionLine(r)}
     <div class="kv"><span>Confluence <span class="zk">kitne point mile</span></span><span>${sc}/100 (${r.confirmations_passed??"—"}/${r.confirmations_total??"—"})
       ${r.counter_trend?' <b style="color:var(--amb)">trend ke khilaf</b>':""}</span></div>
@@ -641,7 +661,7 @@ function render(by,histByKey){
         ${hard.map(b=>`<div>✗ ${esc(b)}</div>`).join("")}
         <div style="color:var(--dim);margin-top:6px">Jab tak data purana hai koi
         signal nahi diya jayega — ye jaan boojh kar hai, koi kharabi nahi.</div></div>`:""}
-      <div class="profiles">${(scalpOnly?["SCALP"]:PROFILES).map(p=>profileCard(p,by[a][p],dp,histByKey[a+"|"+p])).join("")}</div>
+      <div class="profiles">${(scalpOnly?["SCALP"]:PROFILES).map(p=>profileCard(p,by[a][p],dp,histByKey[a+"|"+p],price)).join("")}</div>
     </div>`;
   }).join("");
 
