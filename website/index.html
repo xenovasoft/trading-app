@@ -55,6 +55,14 @@
   .action.go-short{background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.4);color:var(--red)}
   .action.go-wait{background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.4);color:var(--amb)}
   .action.go-no{background:rgba(107,114,128,.15);border:1px solid rgba(107,114,128,.4);color:var(--tx)}
+  .copy-order-btn{appearance:none;-webkit-appearance:none;cursor:pointer;margin-top:8px;
+    background:rgba(0,0,0,.25);color:inherit;border:1px solid currentColor;border-radius:8px;
+    padding:6px 12px;font-size:12px;font-weight:700;font-family:inherit;
+    display:inline-flex;align-items:center;gap:6px;opacity:.9;
+    -webkit-tap-highlight-color:transparent}
+  .copy-order-btn:hover{opacity:1}
+  .copy-order-btn:active{transform:scale(.97)}
+  .copy-order-btn.copied{background:rgba(34,197,94,.3);border-color:var(--grn);color:var(--grn)}
   .dirline{font-size:15px;line-height:1.5;margin:0 0 10px;padding:9px 11px;border-radius:8px;
     background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.25)}
   .dirline b.long{color:var(--grn)} .dirline b.short{color:var(--red)}
@@ -354,6 +362,58 @@ function priceGap(entry,livePx,dp){
   const diff=livePx-entry, pct=entry?100*diff/entry:0;
   return ` (${diff>0?"+":""}${f(diff,dp)} / ${pct>0?"+":""}${pct.toFixed(2)}% door)`;
 }
+/* Plain-text order ticket for the copy button below — deliberately NOT an
+   auto-execute integration. This only ever fires from a real actionable
+   LONG/SHORT (dec===dir), never from WAIT or NO TRADE, and copying it to
+   the clipboard still requires the user to open their broker and place it
+   themselves. The point is speed (no re-typing numbers under time
+   pressure), not removing the human confirmation step. */
+function orderTicketText(r,dp){
+  const lines=[`${r.asset} ${r.direction_considered} (${r.expected_hold||""})`,
+    `Entry: ${f(r.entry,dp)}`, `Stop Loss: ${f(r.stop,dp)}`];
+  [1,2,3].forEach(i=>{const p=r["tp"+i];if(p!=null)
+    lines.push(`Target ${i}: ${f(p,dp)}${r["tp"+i+"_rr"]!=null?` (${r["tp"+i+"_rr"]}R)`:""}`);});
+  if(r.lots!=null) lines.push(`Position size: ${r.lots} lots`);
+  return lines.join("\n");
+}
+function copyOrderBtn(r,dp){
+  return `<button type="button" class="copy-order-btn" data-ticket="${esc(orderTicketText(r,dp))}">
+    <span class="ci">📋</span><span class="cl">Order copy karein</span></button>`;
+}
+// Delegated so it keeps working across every re-render (render() rewrites
+// #root's innerHTML on every poll/refresh; #root itself never changes).
+function legacyCopy(text){
+  const ta=document.createElement("textarea");
+  ta.value=text; ta.style.position="fixed"; ta.style.opacity="0";
+  document.body.appendChild(ta); ta.select();
+  document.execCommand("copy"); document.body.removeChild(ta);
+}
+document.getElementById("root").addEventListener("click",async(e)=>{
+  const btn=e.target.closest(".copy-order-btn");
+  if(!btn) return;
+  const text=btn.dataset.ticket;
+  const label=btn.querySelector(".cl");
+  const prev=label.textContent;
+  try{
+    // navigator.clipboard.writeText can THROW even when it exists (lost
+    // document focus, permission denied, etc) — not just be absent — so the
+    // legacy execCommand path is a genuine fallback here, not just a branch
+    // for old browsers. Verified this matters: it failed with
+    // NotAllowedError ("Document is not focused") during testing even
+    // though the API was present.
+    if(navigator.clipboard&&window.isSecureContext) await navigator.clipboard.writeText(text);
+    else legacyCopy(text);
+    btn.classList.add("copied"); label.textContent="Copy ho gaya ✓";
+  }catch(err){
+    try{ legacyCopy(text); btn.classList.add("copied"); label.textContent="Copy ho gaya ✓"; }
+    catch(err2){
+      console.error("copy failed",err,err2);
+      label.textContent="Copy nahi hua — manually likh lein";
+    }
+  }
+  setTimeout(()=>{btn.classList.remove("copied"); label.textContent=prev;},1800);
+});
+
 function actionBanner(r,livePx){
   const dir=r.direction_considered, dec=r.decision, dp=DP[r.asset]??2;
   const lp=livePx??r.price;
@@ -366,7 +426,8 @@ function actionBanner(r,livePx){
       <div>${dir} KAREIN — ${f(r.entry,dp)} par order lagayein
       <span class="sm">Stop Loss ${f(r.stop,dp)} · Target 1: ${f(r.tp1,dp)}
       <br>Abhi live price: <b>${f(lp,dp)}</b>${priceGap(r.entry,lp,dp)} — order lagane se pehle
-      confirm karein price abhi bhi entry ke qareeb hai</span></div></div>`;
+      confirm karein price abhi bhi entry ke qareeb hai</span>
+      ${copyOrderBtn(r,dp)}</div></div>`;
   }
   if(dec==="WAIT"){
     const cls=dir==="LONG"?"go-long":"go-short";
