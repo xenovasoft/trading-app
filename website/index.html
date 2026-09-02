@@ -719,7 +719,22 @@ function render(by,histByKey){
     ? `${Object.keys(by).length} assets · SCALP setups only`
     : `${Object.keys(by).length} assets · SWING + SCALP`;
   renderTabs(by);
-  const shown=ORDER.filter(a=>by[a]).filter(a=>selected==="ALL"||a===selected);
+  let shown=ORDER.filter(a=>by[a]).filter(a=>selected==="ALL"||a===selected);
+  /* In Scalp mode, an actionable entry (real LONG/SHORT) should never be
+     buried behind scrolling past two NO TRADE assets to find it -- sort it
+     to the top the moment one exists, WAIT next, NO TRADE last. Does NOT
+     fabricate a signal when none exists: if all three are NO TRADE, order
+     stays the plain ORDER list and every card still says so honestly. */
+  if(scalpOnly && selected==="ALL"){
+    const rank=a=>{
+      const r=by[a].SCALP;
+      if(!r||!r.direction_considered) return 2;
+      if(r.decision===r.direction_considered) return 0;   // real LONG/SHORT
+      if(r.decision==="WAIT") return 1;
+      return 2;                                            // NO TRADE
+    };
+    shown=[...shown].sort((a,b)=>rank(a)-rank(b));
+  }
 
   document.getElementById("root").innerHTML=shown.map(a=>{
     const any=by[a].SWING||by[a].SCALP, dp=DP[a]??2;
