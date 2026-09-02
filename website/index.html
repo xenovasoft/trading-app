@@ -142,6 +142,14 @@
   .charterr{color:var(--dim);font-size:12.5px;text-align:center;padding:40px 0}
   .chart24h{display:flex;gap:16px;margin-top:8px;font-size:11.5px;color:var(--dim);flex-wrap:wrap}
   .chart24h b{color:var(--tx);font-variant-numeric:tabular-nums}
+  .refreshStatus{display:none;align-items:center;gap:8px;font-size:12.5px;
+    color:var(--amb);background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.35);
+    border-radius:8px;padding:8px 12px;margin:0 0 12px}
+  .refreshStatus.show{display:flex}
+  .refreshStatus.ok{color:var(--grn);background:rgba(34,197,94,.1);border-color:rgba(34,197,94,.35)}
+  .refreshStatus.err{color:var(--dim);background:rgba(107,114,128,.1);border-color:rgba(107,114,128,.35)}
+  .refreshStatus .spin{width:13px;height:13px;border:2px solid currentColor;border-top-color:transparent;
+    border-radius:50%;flex:0 0 auto;animation:spin .8s linear infinite}
   .tabs{display:flex;gap:8px;overflow-x:auto;padding:0 4px 14px;
     -webkit-overflow-scrolling:touch;scrollbar-width:none}
   .tabs::-webkit-scrollbar{display:none}
@@ -244,6 +252,7 @@
     </button>
   </div>
 </header>
+<div class="refreshStatus" id="refreshStatus"><span class="spin"></span><span id="refreshStatusText"></span></div>
 <div class="tabs" id="tabs"></div>
 <div class="chartwrap" id="chartWrap" style="display:none">
   <div class="charttop">
@@ -749,6 +758,7 @@ function render(by,histByKey){
     futures roll calendar.`;
 }
 
+let lastNewestUpdatedAt=null;
 async function fetchAndRender(){
   const [{data,error},historyRows]=await Promise.all([fetchSignals(),fetchHistory()]);
   const root=document.getElementById("root");
@@ -758,16 +768,31 @@ async function fetchAndRender(){
   const by={};data.forEach(r=>{(by[r.asset]=by[r.asset]||{})[r.profile]=r;});
   const newest=data.reduce((a,b)=>new Date(a.updated_at)>new Date(b.updated_at)?a:b);
   document.getElementById("age").textContent="signal data updated "+ago(newest.updated_at);
+  lastNewestUpdatedAt=newest.updated_at;
 
   lastBy=by; lastHistByKey=groupHistory(historyRows||[]);
   render(lastBy,lastHistByKey);
   syncChartToSelection();
 }
-/* Manual refresh. This re-reads the latest analysis already stored in
-   Supabase — it does NOT re-run the engine. New analysis is produced by the
-   GitHub Actions cron every 15 minutes, so pressing this more often than that
-   will legitimately show the same numbers. The age indicator is the honest
-   signal of how fresh the underlying data actually is. */
+
+function setRefreshStatus(text,cls){
+  const el=document.getElementById("refreshStatus");
+  document.getElementById("refreshStatusText").textContent=text;
+  el.className="refreshStatus show"+(cls?" "+cls:"");
+}
+function hideRefreshStatus(){document.getElementById("refreshStatus").classList.remove("show");}
+function sleep(ms){return new Promise(r=>setTimeout(r,ms));}
+
+/* Refresh now actually launches the engine (POST /api/run-check, which
+   dispatches the same GitHub Actions workflow the 15-min cron runs) instead
+   of just re-reading whatever was last stored. A dispatched run still takes
+   ~30-90s (checkout, install deps, fetch 3 assets x 6 timeframes each, write
+   Supabase) so this can't be instant -- it triggers, then polls for the
+   updated_at timestamp to actually move forward, rather than lying with a
+   spinner that stops before real new data exists.
+   Falls back to a plain re-read (the old behaviour) if the trigger endpoint
+   isn't configured yet (GH_DISPATCH_TOKEN missing in Vercel) or fails, so a
+   missing token degrades gracefully instead of breaking Refresh entirely. */
 let refreshing=false;
 async function manualRefresh(){
   if(refreshing) return;
@@ -775,15 +800,43 @@ async function manualRefresh(){
   const btn=document.getElementById("refresh");
   const lbl=document.getElementById("refreshLabel");
   btn.disabled=true; btn.classList.add("busy"); lbl.textContent="Refreshing";
-  const started=Date.now();
-  try{ await fetchAndRender(); }
+  const beforeTs=lastNewestUpdatedAt;
+  try{
+    setRefreshStatus("Engine ko trigger kiya ja raha hai…");
+    const r=await fetch("/api/run-check",{method:"POST",cache:"no-store"});
+    const j=await r.json().catch(()=>({}));
+    if(!r.ok||!j.triggered){
+      setRefreshStatus(
+        r.status===501?"Live trigger abhi configure nahi hai — sirf latest stored data dikha rahe hain":
+        "Engine trigger nahi ho saka — sirf latest stored data dikha rahe hain","err");
+      await fetchAndRender();
+      await sleep(2500); hideRefreshStatus();
+      return;
+    }
+    setRefreshStatus("Engine chal raha hai… naya data ~30-90s mein aayega");
+    await fetchAndRender();  // show whatever's current immediately, don't leave the screen blank
+    const deadline=Date.now()+100000;
+    while(Date.now()<deadline){
+      await sleep(8000);
+      await fetchAndRender();
+      if(lastNewestUpdatedAt&&lastNewestUpdatedAt!==beforeTs){
+        setRefreshStatus("Naya data aa gaya ✓","ok");
+        await sleep(2000); hideRefreshStatus();
+        return;
+      }
+    }
+    setRefreshStatus("Engine abhi bhi chal raha hai — thodi dair mein khud refresh ho jayega","err");
+    await sleep(3500); hideRefreshStatus();
+  }catch(e){
+    setRefreshStatus("Refresh nahi ho saka — connection check karein","err");
+    await sleep(3000); hideRefreshStatus();
+  }
   finally{
-    // hold the spinner briefly so a fast refresh still reads as a response
-    const wait=Math.max(0,450-(Date.now()-started));
-    setTimeout(()=>{
-      btn.disabled=false; btn.classList.remove("busy"); lbl.textContent="Refresh";
-      refreshing=false;
-    },wait);
+    // No artificial minimum-spinner delay here (unlike the old version) --
+    // this flow legitimately runs 30-100s+ end to end, so there is no "too
+    // fast to read" case to pad for.
+    btn.disabled=false; btn.classList.remove("busy"); lbl.textContent="Refresh";
+    refreshing=false;
   }
 }
 document.getElementById("refresh").addEventListener("click",manualRefresh);
