@@ -133,16 +133,31 @@ def evaluate_direction(asset, direction, frames, frames_i, zones, price,
          f"pen {sweep['penetration_atr']} ATR") if sweep else "none in window")
 
     # 4. Entry near a qualified zone on the correct side
+    #
+    # SMC-proper: an ENTRY happens at an order block or FVG (the actual
+    # footprint of the move that created the imbalance) or a breaker (a
+    # failed order block, same family, flipped polarity). Equal highs/lows,
+    # swing points and session extremes are LIQUIDITY -- price gets drawn
+    # toward them, which is exactly why select_targets() already uses this
+    # same `zones` list for targets. Letting those same marks also qualify
+    # as an ENTRY (the pre-fix behaviour) meant a setup could get "entered"
+    # at a pool it should have been aiming AT. Live evidence before this fix:
+    # 2 of 6 signals running right now were anchored at a bare
+    # session-extreme/equal-level zone with no order block or FVG anywhere
+    # in it (e.g. "asia_session_low/equal_lows"), not a real SMC entry
+    # structure. A zone that merges an OB/FVG/breaker WITH other confluence
+    # marks (equal levels, VWAP, round numbers, session extremes) still
+    # qualifies and is still preferred by strength -- those marks remain
+    # valid confluence, just not sufficient on their own.
     want_side = "sell_side" if want_bull else "buy_side"
     near = [z for z in zones
             if z["side"] == want_side and abs(z["distance_atr"]) <= 1.5
-            and any(k in ("order_block", "unfilled_fvg", "breaker",
-                          "equal_lows", "equal_highs", "swing_low", "swing_high")
+            and any(k in ("order_block", "unfilled_fvg", "breaker")
                     for k in z["kinds"])]
     best_zone = max(near, key=lambda z: z["strength"]) if near else None
-    add("Price at qualified liquidity zone", best_zone is not None, 15,
+    add("Price at qualified order block / FVG", best_zone is not None, 15,
         (f"{'/'.join(best_zone['kinds'][:3])} str={best_zone['strength']} "
-         f"@{best_zone['low']:.4f}-{best_zone['high']:.4f}") if best_zone else "none within 1.5 ATR")
+         f"@{best_zone['low']:.4f}-{best_zone['high']:.4f}") if best_zone else "no order block/FVG/breaker within 1.5 ATR")
 
     # 5. Premium / discount
     pdl = pd_zone.get("label")
@@ -219,7 +234,19 @@ def build_setup(asset, direction, frames, frames_i, zones, price, atr_val,
     zone = evaluation["best_zone"]
     if zone:
         entry = (zone["low"] + zone["high"]) / 2
-        entry_kind = f"limit at {'/'.join(zone['kinds'][:2])} zone"
+        # The zone was qualified above because it contains an order block,
+        # FVG or breaker -- but that mark can sit anywhere in zone["kinds"]
+        # after merging with other confluence (session extremes, equal
+        # levels, VWAP, round numbers), and kinds[:2] doesn't necessarily
+        # include it. A label like "asia_session_low/equal_lows" for a zone
+        # that IS anchored on a real order block hides the actual reason the
+        # entry qualified. Put the SMC structure that justified the entry
+        # first, then up to one more piece of confluence for context.
+        smc_kind = next((k for k in zone["kinds"]
+                         if k in ("order_block", "unfilled_fvg", "breaker")), None)
+        label_kinds = [smc_kind] + [k for k in zone["kinds"] if k != smc_kind][:1] \
+            if smc_kind else zone["kinds"][:2]
+        entry_kind = f"limit at {'/'.join(label_kinds)} zone"
     else:
         entry = price
         entry_kind = "market at current price"
