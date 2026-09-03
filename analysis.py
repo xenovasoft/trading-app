@@ -100,6 +100,29 @@ def determine_bias(frames_i, timeframes):
     return bias, detail
 
 
+# The SMC structures that actually justify an ENTRY. Everything else in a
+# zone's `kinds` (equal levels, session extremes, VWAP, round numbers, HVN)
+# is confluence around that structure, or liquidity to target -- not a
+# reason to enter on its own.
+ENTRY_STRUCTURES = ("order_block", "unfilled_fvg", "breaker")
+
+
+def smc_first_kinds(kinds, n=3):
+    """Label a zone with the structure that qualified it FIRST.
+
+    A zone's `kinds` list is built by merging overlapping detections, so the
+    order block or FVG that made it a valid entry can end up anywhere in it.
+    Labelling with a raw kinds[:n] slice then hides the actual reason --
+    an FVG-anchored zone rendering as "anchored_vwap/equal_lows/session_vwap"
+    reads like the engine entered at a VWAP line. Shared by the checklist
+    note and the entry_type string so the two can't drift apart.
+    """
+    structure = next((k for k in kinds if k in ENTRY_STRUCTURES), None)
+    if not structure:
+        return list(kinds[:n])
+    return [structure] + [k for k in kinds if k != structure][:max(0, n - 1)]
+
+
 # ------------------------------------------------------------ EVALUATION ----
 
 def evaluate_direction(asset, direction, frames, frames_i, zones, price,
@@ -152,11 +175,11 @@ def evaluate_direction(asset, direction, frames, frames_i, zones, price,
     want_side = "sell_side" if want_bull else "buy_side"
     near = [z for z in zones
             if z["side"] == want_side and abs(z["distance_atr"]) <= 1.5
-            and any(k in ("order_block", "unfilled_fvg", "breaker")
-                    for k in z["kinds"])]
+            and any(k in ENTRY_STRUCTURES for k in z["kinds"])]
     best_zone = max(near, key=lambda z: z["strength"]) if near else None
     add("Price at qualified order block / FVG", best_zone is not None, 15,
-        (f"{'/'.join(best_zone['kinds'][:3])} str={best_zone['strength']} "
+        (f"{'/'.join(smc_first_kinds(best_zone['kinds'], 3))} "
+         f"str={best_zone['strength']} "
          f"@{best_zone['low']:.4f}-{best_zone['high']:.4f}") if best_zone else "no order block/FVG/breaker within 1.5 ATR")
 
     # 5. Premium / discount
@@ -242,11 +265,7 @@ def build_setup(asset, direction, frames, frames_i, zones, price, atr_val,
         # that IS anchored on a real order block hides the actual reason the
         # entry qualified. Put the SMC structure that justified the entry
         # first, then up to one more piece of confluence for context.
-        smc_kind = next((k for k in zone["kinds"]
-                         if k in ("order_block", "unfilled_fvg", "breaker")), None)
-        label_kinds = [smc_kind] + [k for k in zone["kinds"] if k != smc_kind][:1] \
-            if smc_kind else zone["kinds"][:2]
-        entry_kind = f"limit at {'/'.join(label_kinds)} zone"
+        entry_kind = f"limit at {'/'.join(smc_first_kinds(zone['kinds'], 2))} zone"
     else:
         entry = price
         entry_kind = "market at current price"
