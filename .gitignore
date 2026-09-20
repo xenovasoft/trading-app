@@ -27,3 +27,7 @@ bt_trades*.csv
 # Paper-trading session state: rewritten every engine cycle, machine-local.
 paper_state.json
 paper_state.json.tmp
+
+# Supabase CLI link state: machine-local, and pooler-url holds a DB
+# connection string. Never commit.
+supabase/.temp/
