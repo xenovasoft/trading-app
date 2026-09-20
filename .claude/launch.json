@@ -4,7 +4,24 @@
     {
       "name": "website",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8934", "--directory", "website"],
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8934",
+        "--directory",
+        "website"
+      ],
+      "port": 8934
+    },
+    {
+      "name": "website-dev",
+      "runtimeExecutable": "/Users/haris/Documents/GitHub/gold-signal-bot/.venv/bin/python",
+      "runtimeArgs": [
+        "devserver.py",
+        "--port",
+        "8934",
+        "--demo"
+      ],
       "port": 8934
     }
   ]

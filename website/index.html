@@ -220,6 +220,41 @@
   .gsec{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--dim);
     margin:18px 0 8px;padding-top:10px;border-top:1px solid var(--bd)}
   .gsec:first-child{margin-top:0;padding-top:0;border-top:none}
+
+  /* ---- paper forward test -------------------------------------------------
+     Sits above the signal cards because its status changes how every card
+     below should be read: while a paper session is running these are being
+     recorded, not traded. */
+  .paper{background:var(--card);border:1px solid var(--bd);border-radius:14px;
+    padding:14px 16px;margin-bottom:16px}
+  .paper.hidden{display:none}
+  .ptop2{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  .ptitle{font-size:11px;font-weight:650;letter-spacing:.06em;color:var(--dim);text-transform:uppercase}
+  .pstat{font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;letter-spacing:.03em}
+  .pstat.on{background:rgba(34,197,94,.16);color:var(--grn)}
+  .pstat.off{background:rgba(107,114,128,.2);color:var(--gry)}
+  .pstat.stop{background:rgba(239,68,68,.16);color:var(--red)}
+  .pstat.pend{background:rgba(245,158,11,.16);color:var(--amb)}
+  .pbars{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+  @media(max-width:480px){.pbars{grid-template-columns:1fr}}
+  .pbar .plab{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-bottom:4px}
+  .pbar .plab b{color:var(--tx);font-variant-numeric:tabular-nums;font-weight:650}
+  .ptrack{height:5px;background:var(--card2);border:1px solid var(--bd);border-radius:999px;overflow:hidden}
+  .pfill{height:100%;background:var(--blu);border-radius:999px;transition:width .3s ease}
+  .pfill.warn{background:var(--amb)} .pfill.bad{background:var(--red)}
+  .pverdict{margin-top:12px;font-size:12.5px;color:var(--dim);line-height:1.5}
+  .pverdict b{color:var(--tx)}
+  .prow2{display:flex;gap:16px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--dim)}
+  .prow2 b{color:var(--tx);font-variant-numeric:tabular-nums}
+  .pbtn{appearance:none;-webkit-appearance:none;cursor:pointer;font-family:inherit;
+    background:var(--card2);color:var(--tx);border:1px solid var(--bd);border-radius:9px;
+    padding:8px 16px;font-size:12.5px;font-weight:700;margin-top:12px}
+  .pbtn:hover{border-color:var(--dim)}
+  .pbtn:disabled{opacity:.45;cursor:not-allowed}
+  .pbtn.danger{border-color:rgba(239,68,68,.5);color:#fca5a5}
+  .pbtn:focus-visible{outline:2px solid var(--blu);outline-offset:2px}
+  .pnote{font-size:11px;color:var(--dim);margin-top:8px;line-height:1.5}
+  .pnote.err{color:#fca5a5}
 </style>
 </head>
 <body>
@@ -265,6 +300,17 @@
   </div>
   <div class="chartbox" id="chartBox"></div>
   <div class="chart24h" id="chart24h"></div>
+</div>
+<div class="paper hidden" id="paperPanel">
+  <div class="ptop2">
+    <span class="ptitle">Paper forward test</span>
+    <span class="pstat off" id="paperStatus">—</span>
+  </div>
+  <div class="pbars" id="paperBars"></div>
+  <div class="pverdict" id="paperVerdict"></div>
+  <div class="prow2" id="paperRow"></div>
+  <button class="pbtn" id="paperBtn" type="button">—</button>
+  <div class="pnote" id="paperNote"></div>
 </div>
 <div id="root"><div class="empty">Loading…</div></div>
 <div class="foot" id="foot"></div>
@@ -1012,6 +1058,117 @@ function updateChartLivePrice(){
 
 fetchAndRender();setInterval(fetchAndRender,30000);
 pollTickers();setInterval(pollTickers,2000);
+</script>
+
+<script>
+/* Paper forward test panel.
+   Reads /api/paper (a mirror of papertrader.snapshot()) and writes an intent
+   to /api/paper-control. The control is deliberately not optimistic: the
+   engine runs on a 15-minute cron, so the button reports "requested" and the
+   panel keeps showing the real engine-side status until it actually changes.
+   Pretending otherwise would teach the user to trust a Stop that has not
+   happened yet. */
+(function(){
+  var panel=document.getElementById("paperPanel");
+  var elStatus=document.getElementById("paperStatus"),
+      elBars=document.getElementById("paperBars"),
+      elVerdict=document.getElementById("paperVerdict"),
+      elRow=document.getElementById("paperRow"),
+      elBtn=document.getElementById("paperBtn"),
+      elNote=document.getElementById("paperNote");
+  var state=null, busy=false;
+
+  function bar(label,used,limit,unit){
+    var pct=limit>0?Math.min(100,100*used/limit):0;
+    var cls=pct>=100?"bad":pct>=70?"warn":"";
+    return '<div class="pbar"><div class="plab"><span>'+label+
+      '</span><b>'+used.toFixed(unit==="R"?1:0)+(unit||"")+" / "+
+      limit.toFixed(unit==="R"?1:0)+(unit||"")+'</b></div>'+
+      '<div class="ptrack"><div class="pfill '+cls+'" style="width:'+pct+'%"></div></div></div>';
+  }
+
+  function render(){
+    panel.classList.remove("hidden");
+    if(!state){ elStatus.textContent="unavailable"; elStatus.className="pstat off"; return; }
+
+    var st=state.status||"DISARMED", pend=state.pending_request;
+    elStatus.textContent = pend ? (pend==="arm"?"starting…":"stopping…") : st;
+    elStatus.className = "pstat "+(pend?"pend":st==="ARMED"?"on":st==="STOPPED"?"stop":"off");
+
+    var lim=state.limits||{}, n=state.closed_trades||0, dd=state.max_dd_r||0;
+    elBars.innerHTML = (lim.max_trades?bar("Trades recorded",n,lim.max_trades,""):"")+
+                       (lim.max_drawdown_r?bar("Drawdown",dd,lim.max_drawdown_r,"R"):"");
+
+    var v=state.verification||{};
+    if(state.never_run){
+      elVerdict.innerHTML="<b>No session has run yet.</b> Starting one records "+
+        "the engine's signals as simulated trades — no money and no broker "+
+        "involved — so the backtest's −0.092R can be checked against bars "+
+        "nobody has seen.";
+    }else if(v.verdict && v.n>=10){
+      elVerdict.innerHTML="<b>"+v.verdict+"</b> — forward "+
+        (v.expectancy_r>=0?"+":"")+v.expectancy_r.toFixed(3)+"R vs backtest "+
+        v.backtest_expectancy_r.toFixed(3)+"R (z="+(v.z>=0?"+":"")+v.z.toFixed(2)+
+        "). "+(v.detail||"");
+    }else{
+      elVerdict.innerHTML="<b>"+(v.detail||"collecting sample")+"</b>";
+    }
+
+    var open=(state.open_positions||[]).length;
+    elRow.innerHTML="<span>open <b>"+open+"</b></span>"+
+      "<span>total <b>"+(state.total_r>=0?"+":"")+(state.total_r||0).toFixed(2)+"R</b></span>"+
+      (state.stop_reason?"<span>stopped: <b>"+state.stop_reason+"</b></span>":"");
+
+    var running = st==="ARMED";
+    elBtn.textContent = pend ? "request sent" : running ? "Stop session" : "Start paper session";
+    elBtn.className = "pbtn"+(running?" danger":"");
+    elBtn.disabled = busy || !!pend;
+    if(!elNote.classList.contains("err")){
+      elNote.textContent = running
+        ? "Stops itself on "+(lim.max_drawdown_r||0)+"R drawdown, "+
+          (lim.max_trades||0)+" trades, "+(lim.max_days||0)+" days, or a stale feed."
+        : "Simulated orders only — this code has no path to a broker.";
+    }
+  }
+
+  async function load(){
+    try{
+      var r=await fetch("/api/paper",{cache:"no-store"});
+      state = r.ok ? await r.json() : null;
+    }catch(e){ state=null; }
+    render();
+  }
+
+  elBtn.addEventListener("click", async function(){
+    if(busy||!state) return;
+    var action = state.status==="ARMED" ? "disarm" : "arm";
+    if(action==="arm" && !confirm(
+        "Start a paper forward test?\n\nSimulated orders only. It records the "+
+        "engine's signals for up to "+((state.limits||{}).max_trades||60)+
+        " trades and stops itself on drawdown, time, or a stale feed.")) return;
+    busy=true; elBtn.disabled=true; elNote.classList.remove("err");
+    elNote.textContent="sending…";
+    try{
+      var r=await fetch("/api/paper-control",{method:"POST",cache:"no-store",
+        headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({action:action})});
+      var j=await r.json();
+      if(!r.ok){
+        elNote.classList.add("err");
+        elNote.textContent=(j.error||"failed")+(j.detail?" — "+j.detail:"");
+      }else{
+        elNote.textContent=j.detail||"requested";
+        if(state) state.pending_request=action;
+      }
+    }catch(e){
+      elNote.classList.add("err"); elNote.textContent="request failed: "+e;
+    }
+    busy=false; render();
+  });
+
+  load();
+  setInterval(load, 60000);
+})();
 </script>
 </body>
 </html>

@@ -23,3 +23,7 @@ ios/DerivedData/
 xcuserdata/
 bt_cache/
 bt_trades*.csv
+
+# Paper-trading session state: rewritten every engine cycle, machine-local.
+paper_state.json
+paper_state.json.tmp

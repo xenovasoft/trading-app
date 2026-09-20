@@ -259,14 +259,51 @@ def process(asset, profile, res, p, state_all, dp):
     return st
 
 
+def paper_cycle(signals, frames_by_asset):
+    """Advance the paper-trading forward test by one engine cycle.
+
+    Wrapped in a blanket try/except on purpose: the paper session is an
+    OBSERVER of the engine, and an observer must never be able to take the
+    engine down. If this raises, the signal run still completes and the
+    failure is printed rather than swallowed.
+    """
+    try:
+        import papertrader
+    except Exception as e:
+        print(f"papertrader unavailable: {e}", file=sys.stderr)
+        return
+    try:
+        st = papertrader.load_state()
+        st, note = papertrader.apply_remote_intent(st)
+        if note:
+            print(f"  paper: {note}")
+        st, events = papertrader.step(st, signals, frames_by_asset)
+        papertrader.save_state(st)
+        papertrader.push_remote(st)
+        for e in events:
+            print(f"  paper: {e}")
+    except Exception as e:
+        print(f"paper cycle failed: {e}", file=sys.stderr)
+        traceback.print_exc()
+
+
 def main():
     state_all = load_state_v2()
     failures = []
+    paper_signals, paper_frames = {}, {}
 
     for asset in dataio.ASSETS:
         dp = config.CONTRACT_SPECS[asset]["price_dp"]
         try:
-            res = analysis.analyze_asset(asset)
+            # analyze_asset() is a thin wrapper that loads frames and throws
+            # them away. Inlined here so the paper forward test can settle
+            # exits against the SAME 5M bars this decision was made on --
+            # re-fetching them would double the API calls and could return a
+            # different last bar than the one the signal saw.
+            frames, reports, price, meta = dataio.load_asset(asset)
+            hard, soft = dataio.data_blockers(reports)
+            res = analysis.analyze_frames(asset, frames, price, meta=meta,
+                                          reports=reports, hard=hard, soft=soft)
         except Exception as e:
             failures.append(asset)
             print(f"[{asset}] ANALYSIS FAILED: {e}", file=sys.stderr)
@@ -275,6 +312,12 @@ def main():
 
         gate = "GATE-OK" if not res["data_quality"]["hard_blockers"] else "GATE-BLOCKED"
         print(f"{asset} @ {fmt(res['current_price'], dp)}  {gate}")
+
+        # Feed the paper forward test the same result the live path just used,
+        # so forward and live can never diverge in what they saw.
+        paper_signals[asset] = res
+        if frames.get("5M") is not None:
+            paper_frames[asset] = frames["5M"]
 
         for profile, p in res["profiles"].items():
             try:
@@ -287,6 +330,9 @@ def main():
                 failures.append(f"{asset}/{profile}")
                 print(f"[{asset}/{profile}] FAILED: {e}", file=sys.stderr)
                 traceback.print_exc()
+
+    if paper_signals:
+        paper_cycle(paper_signals, paper_frames)
 
     if failures:
         print(f"\ncompleted with failures: {failures}", file=sys.stderr)
