@@ -34,7 +34,16 @@ import requests
 CACHE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bt_cache")
 
 BINANCE = "https://api.binance.com/api/v3/klines"
-BINANCE_SYMBOL = {"BTCUSD": "BTCUSDT"}
+# XAUUSD maps to PAXGUSDT for the same reason dataio.py prices gold as Kraken
+# PAXGUSD: PAXG is redeemable 1:1 for LBMA gold, so arbitrage pins it to spot.
+# Without this entry gold could not be backtested AT ALL -- every historical
+# result this repo has ever produced was BTC, despite being a gold bot.
+#
+# Caveat that must travel with any volume-based result on this symbol: PAXG
+# turns over ~$20-30M/day, against >$100B/day in COMEX gold futures. The PRICE
+# tracks gold; the VOLUME is a thin token's order flow and is NOT a proxy for
+# institutional gold flow.
+BINANCE_SYMBOL = {"BTCUSD": "BTCUSDT", "XAUUSD": "PAXGUSDT"}
 
 # Binance interval code per engine timeframe.
 INTERVAL = {
