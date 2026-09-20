@@ -273,7 +273,10 @@ def paper_cycle(signals, frames_by_asset):
         print(f"papertrader unavailable: {e}", file=sys.stderr)
         return
     try:
-        st = papertrader.load_state()
+        # Remote-first: the runner is thrown away after every run, so the
+        # local file is empty on each cycle and only Supabase remembers the
+        # session.
+        st = papertrader.load_state_remote_first()
         st, note = papertrader.apply_remote_intent(st)
         if note:
             print(f"  paper: {note}")

@@ -427,13 +427,32 @@ def _supa():
 
 
 def push_remote(state):
-    """Mirror the snapshot to Supabase for the website to read."""
+    """Persist the session to Supabase.
+
+    TWO columns, for two different readers, and the distinction is what makes
+    the session survive at all:
+
+      payload            -- snapshot(), what the website renders.
+      payload["_state"]  -- the COMPLETE state dict, which the engine reads
+                            back next cycle to resume.
+
+    The first version of this function wrote only the snapshot, which was a
+    real bug rather than a shortcut: GitHub Actions runners are ephemeral and
+    paper_state.json is gitignored, so load_state() sees no file and returns
+    DISARMED on every run. A session armed from the website would have lasted
+    exactly one cycle and then silently forgotten itself -- and because the
+    snapshot carries a `closed_trades` COUNT rather than the `trades` list,
+    reading it back could not have restored the session either.
+    """
     url, key, headers = _supa()
     if not url:
         return False
     import requests
-    row = {"id": ROW_ID, "payload": snapshot(state), "requested": None,
-           "updated_at": _iso(_now())}
+    # Full state rides INSIDE payload under "_state" rather than in its own
+    # column, so no schema change is needed and the website -- which spreads
+    # payload and reads named snapshot fields -- simply ignores the extra key.
+    row = {"id": ROW_ID, "payload": {**snapshot(state), "_state": state},
+           "requested": None, "updated_at": _iso(_now())}
     try:
         h = dict(headers); h["Prefer"] = "resolution=merge-duplicates"
         r = requests.post(f"{url}/rest/v1/{PAPER_TABLE}", json=[row],
@@ -472,14 +491,63 @@ def pull_request(clear=True):
         return None
 
 
+def pull_state():
+    """The full session state as last persisted, or None.
+
+    None means "no session has ever been pushed", which is different from a
+    DISARMED session and is why this returns None rather than a fresh
+    new_session().
+    """
+    url, key, headers = _supa()
+    if not url:
+        return None
+    import requests
+    try:
+        r = requests.get(f"{url}/rest/v1/{PAPER_TABLE}",
+                         params={"id": f"eq.{ROW_ID}", "select": "payload"},
+                         headers=headers, timeout=10)
+        if not r.ok or not r.json():
+            return None
+        payload = (r.json()[0] or {}).get("payload") or {}
+        return payload.get("_state") or None
+    except Exception as e:
+        print(f"paper state pull failed: {e}")
+        return None
+
+
+def load_state_remote_first(path=STATE_PATH):
+    """Remote state wins over the local file.
+
+    Remote is the source of truth because the engine runs on a throwaway
+    runner while the session has to outlive it. Locally the two agree, since
+    every step pushes; if the network is down we fall back to the file rather
+    than silently starting a fresh session on top of a live one.
+    """
+    remote = pull_state()
+    if remote:
+        return remote
+    return load_state(path)
+
+
 def apply_remote_intent(state):
-    """Honour a pending website request. Returns (state, note|None)."""
+    """Honour a pending website request. Returns (state, note|None).
+
+    Operates on the state it was HANDED rather than reloading from disk.
+    disarm() reads the local file, which on an ephemeral runner is empty --
+    calling it here would answer a Stop request by throwing away the very
+    session being stopped, losing every trade it had recorded.
+    """
     req = pull_request()
     if req == "arm":
-        return arm(state.get("limits"), note="armed from website"), \
+        return new_session(state.get("limits"), note="armed from website"), \
             "ARMED by website request"
     if req == "disarm":
-        return disarm("stopped from website"), "STOPPED by website request"
+        st = dict(state)
+        if st.get("status") != STOPPED:
+            st["status"] = STOPPED
+            st["stopped_at"] = _iso(_now())
+            st["stop_reason"] = "stopped from website"
+        return st, "STOPPED by website request"
     return state, None
 
 
