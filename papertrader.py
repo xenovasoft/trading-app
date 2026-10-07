@@ -134,6 +134,13 @@ def disarm(reason="manual", path=STATE_PATH):
 
 # ------------------------------------------------------------- AUTO-STOP ----
 
+def scored(trades):
+    """Only trades carrying a real R. UNRESOLVABLE ones are counted in the
+    record but must never enter expectancy, drawdown or the stop rules --
+    a void trade is missing data, not a flat result."""
+    return [t for t in (trades or []) if t.get("r_multiple") is not None]
+
+
 def equity_curve_r(trades, risk_frac=0.01):
     """Equity multiple and peak-to-trough drawdown, in R and in %.
 
@@ -143,8 +150,8 @@ def equity_curve_r(trades, risk_frac=0.01):
     """
     cum, peak, dd_r = 0.0, 0.0, 0.0
     eq, eq_peak, dd_pct = 1.0, 1.0, 0.0
-    for t in trades:
-        r = float(t.get("r_multiple") or 0.0)
+    for t in scored(trades):
+        r = float(t["r_multiple"])
         cum += r
         peak = max(peak, cum)
         dd_r = max(dd_r, peak - cum)
@@ -169,8 +176,9 @@ def check_auto_stop(state, data_age_minutes=None):
         return (f"drawdown {eq['max_dd_r']:.1f}R reached limit "
                 f"{lim['max_drawdown_r']:.1f}R")
 
-    if len(trades) >= lim["max_trades"]:
-        return f"sample target reached ({len(trades)} trades) -- evaluate now"
+    n_scored = len(scored(trades))
+    if n_scored >= lim["max_trades"]:
+        return f"sample target reached ({n_scored} trades) -- evaluate now"
 
     if state.get("started_at"):
         started = pd.Timestamp(state["started_at"]).to_pydatetime()
@@ -217,6 +225,23 @@ def step(state, signals, bars5_by_asset, now=None):
     if state.get("status") != ARMED:
         return state, [f"session {state.get('status')} -- no action"]
 
+    # A profile whose hold exceeds the feed's window can never be resolved:
+    # the entry ages out before the position completes, and every such trade
+    # becomes UNRESOLVABLE. Kraken returns ~720 5M candles (60h) while SWING
+    # wants 1440 (120h), so SWING is structurally un-forward-testable on this
+    # feed. Say so once per step rather than leaving a trail of silent voids.
+    for _asset, _b5 in (bars5_by_asset or {}).items():
+        if _b5 is None or not len(_b5):
+            continue
+        window = len(_b5)
+        for _prof, _need in backtest.MAX_HOLD_BARS_5M.items():
+            if _need > window:
+                events.append(
+                    f"WARN  {_asset} {_prof} needs {_need} bars but the feed "
+                    f"window holds {window} -- positions will age out "
+                    "unresolved, not complete")
+        break      # one warning is enough; the window is the same per asset
+
     # ---- 1. settle open positions first
     for key in list(state.get("open", {})):
         pos = state["open"][key]
@@ -225,14 +250,48 @@ def step(state, signals, bars5_by_asset, now=None):
         if bars5 is None or not len(bars5):
             continue
         t5 = bars5["time"].values
-        entry_idx = int(np.searchsorted(t5, np.datetime64(
-            pd.Timestamp(pos["entry_time"]).tz_localize(None)), side="right"))
+        entry_np = np.datetime64(
+            pd.Timestamp(pos["entry_time"]).tz_localize(None))
+
+        # The live feed is a SLIDING WINDOW (Kraken returns ~720 candles, so
+        # 60h at 5M). Once an entry scrolls off the front, searchsorted
+        # returns 0 and simulate_exit would walk bars the trade never traded
+        # through -- producing a confident, entirely fictional R. Settle it
+        # as UNRESOLVABLE instead, with no r_multiple, so it is visible in the
+        # count but cannot contaminate expectancy.
+        if entry_np < t5[0]:
+            pos.update({
+                "exit": None, "exit_reason": "UNRESOLVABLE", "bars_held": None,
+                "exit_time": str(pd.Timestamp(t5[0])), "r_multiple": None,
+                "net_move": None,
+                "note": ("entry scrolled out of the feed's sliding window "
+                         f"before the position could be resolved; the window "
+                         f"holds {len(t5)} bars and this needed "
+                         f"{pos['max_bars']}"),
+            })
+            state["trades"].append(pos)
+            del state["open"][key]
+            events.append(f"VOID  {asset} {pos['profile']} unresolvable "
+                          "(entry aged out of the data window)")
+            continue
+
+        entry_idx = int(np.searchsorted(t5, entry_np, side="right"))
         if entry_idx >= len(bars5):
             continue
         exit_px, reason, held = backtest.simulate_exit(
             bars5, entry_idx, pos["direction"], pos["entry"], pos["stop"],
             pos["target"], pos["max_bars"])
         if reason == "NO_DATA":
+            continue
+
+        # simulate_exit returns TIME both when a position genuinely ran its
+        # full hold AND when it simply ran out of bars -- end = min(n,
+        # start+max_bars). Treating the second as a settled exit closed
+        # positions the moment the feed caught up to them: a SWING trade
+        # exited at 82 of its 1440 bars (6.8h of an intended 120h), and a
+        # SCALP at 35 of 48. The forward test exists to be comparable with
+        # the backtest, and a truncated hold is not the same trade.
+        if reason == "TIME" and held < pos["max_bars"]:
             continue
         exit_idx = entry_idx + held - 1
         if exit_idx >= len(t5):
@@ -332,14 +391,14 @@ def verify(state, backtest_expectancy=-0.0923, backtest_n=451):
     A |z| above 2 means forward and backtest disagree beyond chance, and the
     backtest should be treated as suspect until the gap is explained.
     """
-    trades = state.get("trades") or []
+    trades = scored(state.get("trades"))
     n = len(trades)
     if n < 10:
         return {"n": n, "verdict": "insufficient sample",
                 "detail": f"{n} trades; need >=10 before any comparison, "
                           ">=60 before the result means much"}
 
-    r = np.array([float(t.get("r_multiple") or 0.0) for t in trades])
+    r = np.array([float(t["r_multiple"]) for t in trades])
     sd = r.std(ddof=1)
     se_fwd = sd / math.sqrt(n) if sd > 0 else 0.0
     # Backtest SE from its own reported dispersion (std 1.645 over n=451).
