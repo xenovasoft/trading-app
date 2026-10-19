@@ -54,6 +54,7 @@ def _credentials():
 
 
 SUPA_URL, SUPA_KEY = _credentials()
+LIVE = False
 
 
 def seed_demo():
@@ -179,7 +180,10 @@ class Handler(SimpleHTTPRequestHandler):
         q = urllib.parse.parse_qs(u.query)
 
         if u.path == "/api/paper":
-            st = papertrader.load_state()
+            # --live mirrors the PRODUCTION account (Supabase); otherwise the
+            # local paper_state.json, which is where `simulate --save` writes.
+            st = (papertrader.load_state_remote_first() if LIVE
+                  else papertrader.load_state())
             if st.get("status") == papertrader.DISARMED and not st.get("trades"):
                 snap = papertrader.snapshot(st)
                 snap["never_run"] = True
@@ -216,6 +220,15 @@ class Handler(SimpleHTTPRequestHandler):
         u = urllib.parse.urlparse(self.path)
         if u.path != "/api/paper-control":
             return self._json({"error": "not implemented locally"}, 404)
+        if LIVE:
+            # Read-only on purpose. Start REPLACES the account, so a stray
+            # click in a local mirror would wipe a running production demo;
+            # and acting locally while displaying production would show a
+            # change that never happened.
+            return self._json({"error": "live view is read-only",
+                               "detail": "this screen mirrors the production "
+                                         "account; start or stop it from the "
+                                         "deployed site"}, 409)
 
         length = int(self.headers.get("Content-Length") or 0)
         try:
@@ -249,9 +262,13 @@ class Handler(SimpleHTTPRequestHandler):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8934)
+    ap.add_argument("--live", action="store_true",
+                    help="mirror the production paper account, read-only")
     ap.add_argument("--demo", action="store_true",
                     help="seed a paper session from bt_trades.csv to look at")
     a = ap.parse_args()
+    global LIVE
+    LIVE = a.live
 
     if a.demo:
         papertrader.save_state(seed_demo())

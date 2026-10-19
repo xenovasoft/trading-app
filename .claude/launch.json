@@ -22,6 +22,17 @@
         "8934"
       ],
       "port": 8934
+    },
+    {
+      "name": "terminal-live",
+      "runtimeExecutable": "/Users/haris/Documents/GitHub/gold-signal-bot/.venv/bin/python",
+      "runtimeArgs": [
+        "devserver.py",
+        "--port",
+        "8935",
+        "--live"
+      ],
+      "port": 8935
     }
   ]
 }

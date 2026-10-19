@@ -59,7 +59,10 @@ button{cursor:pointer}
 /* ---- account strip (MT5's bottom line, promoted) ---- */
 .acct{display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:1px;
   background:var(--bd); border:1px solid var(--bd); border-radius:10px; overflow:hidden}
-@media (max-width:900px){ .acct{grid-template-columns:repeat(4,minmax(0,1fr))} }
+/* Seven boxes never divide evenly into 4 or 2 columns, and the strip's
+   1px separators are its own background showing through -- so an empty
+   cell reads as a grey block. The last box takes the leftover space. */
+@media (max-width:900px){ .acct{grid-template-columns:repeat(4,minmax(0,1fr))} .acct div:last-child{grid-column:span 2} }
 @media (max-width:520px){ .acct{grid-template-columns:repeat(2,minmax(0,1fr))} }
 .acct div{background:var(--panel); padding:8px 12px; display:flex; flex-direction:column; gap:2px; min-width:0}
 .acct dt{font-size:10.5px; font-weight:650; letter-spacing:.07em; text-transform:uppercase; color:var(--dim)}
