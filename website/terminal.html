@@ -573,16 +573,45 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
       cb(b.getAttribute(attr));
     });
   }
-  pick("symbols", "data-sym", function (v) { state.sym = v; loadCandles(true); });
-  pick("tfs", "data-tf", function (v) { state.tf = v; loadCandles(true); });
+  pick("symbols", "data-sym", function (v) { state.sym = v; saveView(); loadCandles(true); });
+  pick("tfs", "data-tf", function (v) { state.tf = v; saveView(); loadCandles(true); });
 
-  document.querySelector(".tabs").addEventListener("click", function (e) {
-    var b = e.target.closest("button[role=tab]"); if (!b) return;
-    Array.prototype.forEach.call(this.querySelectorAll("button[role=tab]"), function (t) {
+  /* ------------------------------------------------- remember the view */
+  // A refresh used to drop back to the live account on the Trade tab, which
+  // for a test history looks exactly like the history being deleted. The
+  // view now lives in the URL (survives refresh, and a shared link opens the
+  // same screen) with localStorage as the fallback for a bare /terminal.html.
+  var VIEW_KEY = "paperTerminalView", TABS = ["trade", "hist", "eq", "jr"];
+  function currentTab() {
+    var t = document.querySelector('.tabs button[aria-selected="true"]');
+    return t ? t.id.slice(2) : "trade";
+  }
+  function selectTab(name) {
+    var b = $("t-" + name); if (!b) return;
+    Array.prototype.forEach.call(document.querySelectorAll(".tabs button[role=tab]"), function (t) {
       var on = t === b; t.setAttribute("aria-selected", String(on));
       $(t.getAttribute("aria-controls")).hidden = !on;
     });
-    if (b.id === "t-eq") drawEquity();
+    if (name === "eq") drawEquity();
+  }
+  function saveView() {
+    var v = { src: state.source, tab: currentTab(), sym: state.sym, tf: state.tf };
+    try { localStorage.setItem(VIEW_KEY, JSON.stringify(v)); } catch (e) { /* storage blocked */ }
+    var h = "src=" + encodeURIComponent(v.src) + "&tab=" + v.tab + "&sym=" + v.sym + "&tf=" + v.tf;
+    if (location.hash.slice(1) !== h) history.replaceState(null, "", "#" + h);
+  }
+  function readView() {
+    var v = {};
+    try { v = JSON.parse(localStorage.getItem(VIEW_KEY) || "{}") || {}; } catch (e) { v = {}; }
+    var q = new URLSearchParams(location.hash.slice(1));     // the URL wins
+    ["src", "tab", "sym", "tf"].forEach(function (k) { if (q.get(k)) v[k] = q.get(k); });
+    return v;
+  }
+
+  document.querySelector(".tabs").addEventListener("click", function (e) {
+    var b = e.target.closest("button[role=tab]"); if (!b) return;
+    selectTab(b.id.slice(2));
+    saveView();
   });
 
   // Two-step start, built into the page: the button asks once, then acts.
@@ -654,11 +683,27 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
       state.tf = span > 100 ? "1d" : span > 25 ? "4h" : span > 6 ? "1h" : "15m";
       pressed("symbols", "data-sym", state.sym); pressed("tfs", "data-tf", state.tf);
     }
+    saveView();
     await loadCandles(true);
     await loadPaper();
   });
-  loadTests();
-  loadCandles(true).then(loadPaper);
+
+  // Restore the saved view only after the test list has loaded, so a saved
+  // test id can be checked against what actually exists. A test that has
+  // since been removed falls back to the live account instead of a blank page.
+  (async function boot() {
+    await loadTests();
+    var v = readView();
+    var known = v.src === "live" || state.tests.some(function (t) { return t.id === v.src; });
+    if (v.src && known) { state.source = v.src; $("src").value = v.src; }
+    if (DP[v.sym] != null) state.sym = v.sym;
+    if (TF_SEC[v.tf]) state.tf = v.tf;
+    pressed("symbols", "data-sym", state.sym); pressed("tfs", "data-tf", state.tf);
+    if (TABS.indexOf(v.tab) >= 0) selectTab(v.tab);
+    await loadCandles(true);
+    await loadPaper();
+    saveView();
+  })();
   setInterval(function () { loadCandles(false).then(render); }, 15000);
   // Static test files never change, so only the live account is re-polled.
   setInterval(function () { if (!isTest()) loadPaper(); }, 30000);
