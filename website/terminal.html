@@ -99,6 +99,8 @@ button{cursor:pointer}
 .btn.danger{border-color:rgba(239,68,68,.5); color:#fca5a5}
 .btn:disabled{opacity:.45; cursor:not-allowed}
 .msg{font-size:12px; color:var(--dim); min-height:1em}
+.testnote{margin:0; font-size:12px; line-height:1.5; color:var(--dim); background:var(--amb-bg); border:1px solid rgba(245,158,11,.35); border-radius:8px; padding:9px 11px}
+.testnote b{color:var(--amb)}
 .msg.err{color:#fca5a5}
 .hint{font-size:11.5px; color:var(--faint); line-height:1.45}
 
@@ -182,8 +184,13 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
     <aside class="side">
       <div class="box">
         <div style="display:flex; justify-content:space-between; align-items:center">
-          <h3>Demo account</h3><span class="pill off" id="st">—</span>
+          <h3>Account</h3><span class="pill off" id="st">—</span>
         </div>
+        <div class="field">
+          <label for="src">Viewing</label>
+          <select id="src"><option value="live">Live demo (production)</option></select>
+        </div>
+        <p class="testnote" id="testnote" hidden></p>
         <dl class="kv">
           <dt>Started</dt><dd id="k-start">—</dd>
           <dt>Starting balance</dt><dd id="k-sbal">—</dd>
@@ -255,7 +262,9 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
   var DP = { XAUUSD: 2, BTCUSD: 1, XAGUSD: 3 };
 
   var state = { sym: "XAUUSD", tf: "15m", candles: [], paper: null,
-                last: {}, prevClose: null, chartAt: 0, priceLines: [] };
+                last: {}, prevClose: null, chartAt: 0, priceLines: [],
+                source: "live", tests: [] };
+  function isTest() { return state.source !== "live"; }
 
   /* ------------------------------------------------------------ helpers */
   function $(id) { return document.getElementById(id); }
@@ -362,14 +371,17 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
     var step = TF_SEC[state.tf];
     var have = new Set(state.candles.map(function (c) { return c.time; }));
     var marks = [];
+    // A 180-day test has 100+ orders; their labels overprint each other into
+    // an unreadable smear, so past 40 orders the colour alone says win/loss.
+    var showText = acct.closed_orders.length <= 40;
     function snap(u) { return u == null ? null : Math.floor(u / step) * step; }
     acct.closed_orders.filter(function (o) { return o.asset === state.sym; }).forEach(function (o) {
       var a = snap(toUnix(o.entry_time)), b = snap(toUnix(o.exit_time));
       var win = (o.pnl_usd || 0) > 0;
       if (have.has(a)) marks.push({ time: a, position: isLong(o) ? "belowBar" : "aboveBar",
-        color: COL.blu, shape: isLong(o) ? "arrowUp" : "arrowDown", text: isLong(o) ? "BUY" : "SELL" });
+        color: COL.blu, shape: isLong(o) ? "arrowUp" : "arrowDown", text: showText ? (isLong(o) ? "BUY" : "SELL") : "" });
       if (have.has(b)) marks.push({ time: b, position: isLong(o) ? "aboveBar" : "belowBar",
-        color: win ? COL.grn : COL.red, shape: "circle", text: money(o.pnl_usd, true) });
+        color: win ? COL.grn : COL.red, shape: "circle", text: showText ? money(o.pnl_usd, true) : "" });
     });
     acct.open_orders.filter(function (o) { return o.asset === state.sym; }).forEach(function (o) {
       var a = snap(toUnix(o.entry_time));
@@ -423,7 +435,11 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
 
   /* -------------------------------------------------------------- paper */
   async function loadPaper() {
-    try { state.paper = await getJSON("/api/paper"); }
+    try {
+      state.paper = isTest()
+        ? await getJSON("/data/tests/" + encodeURIComponent(state.source) + ".json")
+        : await getJSON("/api/paper");
+    }
     catch (e) { state.paper = state.paper || null; }
     await refreshOtherPrices();
     render();
@@ -436,10 +452,22 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
     pill.textContent = st;
     pill.className = "pill " + (p.pending_request ? "pend" : st === "ARMED" ? "on" : st === "STOPPED" ? "stop" : "off");
     var running = p.status === "ARMED";
+    $("newacct").hidden = isTest();
     $("startbtn").hidden = running && !!acct;
     $("stopbtn").hidden = !running;
+    var tn = $("testnote");
+    if (isTest() && p.test) {
+      var w = p.test.window || [];
+      tn.innerHTML = "<b>Test history, not live.</b> " + p.test.description +
+        " Window " + fmtTime(w[0]).slice(0, 10) + " to " + fmtTime(w[1]).slice(0, 10) + "." +
+        (p.test.refused_for_margin ? " " + p.test.refused_for_margin + " backtest trades were refused here for lack of free margin, as the live account would refuse them." : "") +
+        " At 1× these orders are capped at the balance, so dollar results are much smaller than the R results.";
+      tn.hidden = false;
+    } else { tn.hidden = true; }
     $("stopnote").textContent = p.stop_reason ? ("Stopped: " + p.stop_reason) : "";
-    $("s-step").textContent = p.last_step ? ("last checked " + fmtTime(p.last_step) + " UTC") : "has not run yet";
+    $("s-step").textContent = isTest()
+      ? ("test history, replayed from a backtest")
+      : (p.last_step ? ("last checked " + fmtTime(p.last_step) + " UTC") : "has not run yet");
 
     if (!acct) {
       ["a-bal","a-eq","a-fl","a-mg","a-fm","a-pl","a-ret","k-start","k-sbal","k-risk","k-lev","k-win","k-fee","k-dd"]
@@ -599,9 +627,41 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
     $("s-chart").textContent = state.chartAt ? ("updated " + ago(state.chartAt)) : "loading";
     $("live").className = "live" + (age > 60000 ? " stale" : "");
   }
+  function pressed(groupId, attr, val) {
+    Array.prototype.forEach.call($(groupId).querySelectorAll("button"), function (b) {
+      b.setAttribute("aria-pressed", String(b.getAttribute(attr) === val)); });
+  }
+  async function loadTests() {
+    try {
+      state.tests = await getJSON("/data/tests/index.json");
+      var g = document.createElement("optgroup"); g.label = "Test history";
+      state.tests.forEach(function (t) {
+        var o = document.createElement("option"); o.value = t.id;
+        o.textContent = t.name + "  (" + (t.return_pct >= 0 ? "+" : "") + t.return_pct.toFixed(2) + "%)";
+        g.appendChild(o);
+      });
+      if (state.tests.length) $("src").appendChild(g);
+    } catch (e) { /* no tests published: the live account still works */ }
+  }
+  $("src").addEventListener("change", async function () {
+    state.source = this.value;
+    var t = state.tests.find(function (x) { return x.id === state.source; });
+    if (t) {
+      // Jump to the test's symbol, on a timeframe whose bars reach back far
+      // enough to hold its orders (Kraken serves ~720 bars per timeframe).
+      var w = t.window || [], span = (toUnix(w[1]) - toUnix(w[0])) / 86400;
+      state.sym = t.asset || state.sym;
+      state.tf = span > 100 ? "1d" : span > 25 ? "4h" : span > 6 ? "1h" : "15m";
+      pressed("symbols", "data-sym", state.sym); pressed("tfs", "data-tf", state.tf);
+    }
+    await loadCandles(true);
+    await loadPaper();
+  });
+  loadTests();
   loadCandles(true).then(loadPaper);
   setInterval(function () { loadCandles(false).then(render); }, 15000);
-  setInterval(loadPaper, 30000);
+  // Static test files never change, so only the live account is re-polled.
+  setInterval(function () { if (!isTest()) loadPaper(); }, 30000);
   setInterval(tick, 1000);
 })();
 </script>

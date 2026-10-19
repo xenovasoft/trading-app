@@ -1,0 +1,67 @@
+[
+ {
+  "id": "gold-180d",
+  "name": "Gold \u00b7 180-day backtest",
+  "asset": "XAUUSD",
+  "description": "Every trade the corrected engine took on gold, 24 Apr to 19 Oct 2026. Gold fell 10.7% over this window.",
+  "window": [
+   "2026-04-25 12:00:00",
+   "2026-10-18 22:30:00"
+  ],
+  "refused_for_margin": 10,
+  "orders": 133,
+  "return_pct": -0.37
+ },
+ {
+  "id": "btc-180d",
+  "name": "BTC \u00b7 180-day backtest",
+  "asset": "BTCUSD",
+  "description": "Every trade the corrected engine took on BTC, 24 Apr to 19 Oct 2026. BTC rose 5.9% over this window.",
+  "window": [
+   "2026-04-25 05:45:00",
+   "2026-10-17 17:50:00"
+  ],
+  "refused_for_margin": 0,
+  "orders": 125,
+  "return_pct": 3.25
+ },
+ {
+  "id": "btc-180d-long",
+  "name": "BTC \u00b7 long only (spot USDT)",
+  "asset": "BTCUSD",
+  "description": "Only the BUY trades, because a spot USDT account cannot sell short. The most promising result so far, with about a 1-in-3 chance it is luck.",
+  "window": [
+   "2026-05-01 08:45:00",
+   "2026-10-10 22:45:00"
+  ],
+  "refused_for_margin": 0,
+  "orders": 59,
+  "return_pct": 4.47
+ },
+ {
+  "id": "gold-180d-swing",
+  "name": "Gold \u00b7 SWING only",
+  "asset": "XAUUSD",
+  "description": "The setting used for the live demo: SCALP switched off because fees made it lose.",
+  "window": [
+   "2026-06-12 00:30:00",
+   "2026-10-18 22:30:00"
+  ],
+  "refused_for_margin": 0,
+  "orders": 14,
+  "return_pct": 0.57
+ },
+ {
+  "id": "gold-7d-live-engine",
+  "name": "Gold \u00b7 7 days through the live engine",
+  "asset": "XAUUSD",
+  "description": "Replayed bar by bar through step(), the same code the production cron runs, with the free-margin rule on.",
+  "window": [
+   "2026-10-14 13:15:00",
+   "2026-10-18 22:30:00"
+  ],
+  "refused_for_margin": 0,
+  "orders": 3,
+  "return_pct": -1.34
+ }
+]

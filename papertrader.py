@@ -566,7 +566,7 @@ def snapshot(state):
     }
 
 
-def account_snapshot(state):
+def account_snapshot(state, max_closed=25):
     """The dummy-dollar view: balance, P&L, drawdown, and the order book.
 
     None for a session armed before accounts existed, so an old session
@@ -614,7 +614,7 @@ def account_snapshot(state):
         "open_orders": [{k: o.get(k) for k in keep} for o in open_orders],
         "closed_orders": [{k: t.get(k) for k in keep + ("exit", "exit_time",
                            "exit_reason", "r_multiple", "pnl_usd", "balance_after")}
-                          for t in closed[-25:]],
+                          for t in (closed if max_closed is None else closed[-max_closed:])],
         "equity_curve": [round(b, 2) for b in curve],
     }
 
@@ -802,6 +802,100 @@ def apply_remote_intent(state):
     return state, None
 
 
+# ------------------------------------------------------------ TEST ACCOUNTS ---
+
+def _ts(x):
+    t = pd.Timestamp(x)
+    return t.tz_localize(None) if t.tzinfo is not None else t
+
+
+def account_from_trades(trades, balance=DEFAULT_BALANCE, max_leverage=DEFAULT_LEVERAGE,
+                        risk_pct=DEFAULT_RISK_PCT, note=""):
+    """Turn a finished trade list -- a backtest CSV -- into a dollar account.
+
+    Every order goes through size_order(), the function step() uses live, in
+    true time order with closes before opens at the same timestamp. So a
+    test account is sized, capped and refused exactly as the live account
+    would be, and the two can be compared directly. The backtest picked the
+    trades; this decides only what a $-account could actually afford.
+
+    Some backtest trades are refused here for lack of free margin (two
+    profiles or two assets wanting the balance at once). That is real: the
+    live account would refuse them too, so they are counted, not hidden.
+    """
+    st = new_session({"max_trades": 10**9, "max_drawdown_r": 10**9,
+                      "max_days": 10**9}, note=note, balance=balance,
+                     max_leverage=max_leverage, risk_pct=risk_pct)
+    st["status"] = "TEST"
+    ev = []
+    for i, t in enumerate(trades):
+        ev.append((_ts(t["entry_time"]), 1, i))
+        ev.append((_ts(t["exit_time"]), 0, i))
+    ev.sort(key=lambda e: (e[0], e[1]))            # closes (0) before opens (1)
+    open_, refused = {}, 0
+    for when, kind, i in ev:
+        t = trades[i]
+        if kind == 1:
+            used = sum(o["notional_usd"] for o in open_.values())
+            sized, _why = size_order(st["account"], t["asset"], float(t["entry"]),
+                                     float(t["stop"]), used_notional=used)
+            if sized is None:
+                refused += 1
+                continue
+            open_[i] = {k: t.get(k) for k in ("asset", "profile", "direction",
+                        "entry_time", "entry", "stop", "target", "planned_rr",
+                        "confluence")}
+            open_[i]["entry_time"] = str(_ts(t["entry_time"]))
+            open_[i].update(sized)
+        elif i in open_:
+            o = open_.pop(i)
+            # r_multiple is already net of the round-turn fee, so this equals
+            # (move - fee) x units: the same figure step() realises at close.
+            pnl = float(t["r_multiple"]) * o["risk_usd"]
+            st["account"]["balance"] += pnl
+            o.update(exit=float(t["exit"]), exit_time=str(_ts(t["exit_time"])),
+                     exit_reason=t["exit_reason"], bars_held=t.get("bars_held"),
+                     r_multiple=float(t["r_multiple"]), pnl_usd=pnl,
+                     balance_after=st["account"]["balance"])
+            st["trades"].append(o)
+    st["limits"] = dict(DEFAULTS)
+    st["refused_for_margin"] = refused
+    st["started_at"] = str(min(_ts(t["entry_time"]) for t in trades)) if trades else None
+    st["last_step"] = str(max(_ts(t["exit_time"]) for t in trades)) if trades else None
+    return st
+
+
+TESTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                         "website", "data", "tests")
+
+
+def export_test(state, test_id, name, asset, description):
+    """Write a test account to website/data/tests/<id>.json and list it in
+    index.json. Static files, so the terminal reads them the same way on the
+    deployed site and on devserver.py, with no new endpoint."""
+    os.makedirs(TESTS_DIR, exist_ok=True)
+    a = account_snapshot(state, max_closed=None)
+    meta = {"id": test_id, "name": name, "asset": asset,
+            "description": description,
+            "window": [state.get("started_at"), state.get("last_step")],
+            "refused_for_margin": state.get("refused_for_margin", 0),
+            "orders": a["orders_closed"], "return_pct": a["return_pct"]}
+    doc = {"test": meta, "status": "TEST", "started_at": state.get("started_at"),
+           "last_step": state.get("last_step"), "limits": state.get("limits"),
+           "account": a}
+    with open(os.path.join(TESTS_DIR, f"{test_id}.json"), "w") as f:
+        json.dump(doc, f, default=str)
+    idx_path = os.path.join(TESTS_DIR, "index.json")
+    try:
+        idx = json.load(open(idx_path))
+    except (OSError, ValueError):
+        idx = []
+    idx = [m for m in idx if m.get("id") != test_id] + [meta]
+    with open(idx_path, "w") as f:
+        json.dump(idx, f, indent=1, default=str)
+    return meta
+
+
 # --------------------------------------------------------------- SIMULATE ---
 
 def simulate(asset="XAUUSD", days=30, balance=DEFAULT_BALANCE,
@@ -905,6 +999,17 @@ def main():
                     help="write the replayed account to paper_state.json so "
                          "devserver.py and the terminal display it")
 
+    ex = sub.add_parser("export-test", help="turn a backtest CSV into a test "
+                                            "account the terminal can display")
+    ex.add_argument("--csv", required=True)
+    ex.add_argument("--id", required=True)
+    ex.add_argument("--name", required=True)
+    ex.add_argument("--description", default="")
+    ex.add_argument("--long-only", action="store_true",
+                    help="keep LONG trades only (what a spot USDT account can take)")
+    ex.add_argument("--profiles", default=None)
+    ex.add_argument("--balance", type=float, default=DEFAULT_BALANCE)
+
     s = sub.add_parser("step", help="advance one cycle using the live engine")
     s.add_argument("--assets", default="XAUUSD")
 
@@ -938,6 +1043,18 @@ def main():
               f"{len(a['open_orders'])} still open")
         print(f"  worst dip  ${a['max_drawdown_usd']:,.2f} ({a['max_drawdown_pct']:.1f}%)")
         print("=" * 72)
+    elif args.cmd == "export-test":
+        df = pd.read_csv(args.csv)
+        if args.long_only:
+            df = df[df.direction == "LONG"]
+        if args.profiles:
+            df = df[df.profile.isin(args.profiles.split(","))]
+        st = account_from_trades(df.to_dict("records"), balance=args.balance,
+                                 note=args.name)
+        asset = df.asset.iloc[0] if len(df) else ""
+        m = export_test(st, args.id, args.name, asset, args.description)
+        print(f"exported {m['id']}: {m['orders']} orders, {m['return_pct']:+.2f}%, "
+              f"{m['refused_for_margin']} refused for margin")
     elif args.cmd == "step":
         import analysis
         import dataio
