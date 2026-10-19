@@ -259,7 +259,7 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
   <div class="status" id="status">
     <span>Engine <b id="s-step">—</b></span>
     <span>Chart <b id="s-chart">—</b></span>
-    <span>The bot checks the market every 15 minutes. Prices on this screen refresh every 15 seconds.</span>
+    <span>Prices on this screen refresh every 15 seconds. The engine is meant to check the market every 15 minutes; the time shown is when it last actually did.</span>
   </div>
 </div>
 
@@ -479,13 +479,14 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
     var tn = $("testnote");
     if (isTest() && p.test) {
       var w = p.test.window || [];
-      tn.innerHTML = "<b>Test history, not live.</b> " + p.test.description +
+      tn.innerHTML = "<b>Test history, not live.</b> This list is complete and will not get new orders; new orders appear only on the live demo. " + p.test.description +
         " Window " + fmtTime(w[0]).slice(0, 10) + " to " + fmtTime(w[1]).slice(0, 10) + "." +
         (p.test.refused_for_margin ? " " + p.test.refused_for_margin + " backtest trades were refused here for lack of free margin, as the live account would refuse them." : "") +
         " At 1× these orders are capped at the balance, so dollar results are much smaller than the R results.";
       tn.hidden = false;
     } else { tn.hidden = true; }
     $("stopnote").textContent = p.stop_reason ? ("Stopped: " + p.stop_reason) : "";
+    state.lastStep = isTest() ? null : toUnix(p.last_step);
     $("s-step").textContent = isTest()
       ? ("test history, replayed from a backtest")
       : (p.last_step ? ("last checked " + fmtTime(p.last_step) + " UTC") : "has not run yet");
@@ -704,6 +705,15 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
 
   /* -------------------------------------------------------------- loops */
   function tick() {
+    // GitHub fires the 15-minute schedule only ~5 times a day, so say how
+    // stale the engine really is rather than promising a cadence it misses.
+    var ls = state.lastStep, el = $("s-step");
+    if (ls && !isTest()) {
+      var mins = Math.round((Date.now() / 1000 - ls) / 60);
+      var late = mins > 30;
+      el.innerHTML = "last checked " + fmtTime(new Date(ls * 1000).toISOString()) + " UTC (" + ago(ls * 1000) + ")" +
+        (late ? " <span style='color:var(--amb)'>· overdue, should be every 15 min</span>" : "");
+    }
     var age = state.chartAt ? Date.now() - state.chartAt : Infinity;
     $("s-chart").textContent = state.chartAt ? ("updated " + ago(state.chartAt)) : "loading";
     $("live").className = "live" + (age > 60000 ? " stale" : "");
