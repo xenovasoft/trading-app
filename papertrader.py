@@ -95,11 +95,17 @@ def new_account(balance=DEFAULT_BALANCE, max_leverage=DEFAULT_LEVERAGE,
 
 
 def new_session(limits=None, note="", balance=DEFAULT_BALANCE,
-                max_leverage=DEFAULT_LEVERAGE, risk_pct=DEFAULT_RISK_PCT):
+                max_leverage=DEFAULT_LEVERAGE, risk_pct=DEFAULT_RISK_PCT,
+                profiles=None):
     lim = dict(DEFAULTS)
     lim.update(limits or {})
     return {
         "account": new_account(balance, max_leverage, risk_pct),
+        # None trades every profile the engine emits. A list restricts the
+        # session to those -- the 180-day corrected backtest put gold SCALP
+        # at -0.168R (PF 0.68), with essentially zero edge before fees
+        # (+0.010R) and 0.177R of fees per trade, while SWING paid 0.053R.
+        "profiles": list(profiles) if profiles else None,
         "status": ARMED,
         "started_at": _iso(_now()),
         "stopped_at": None,
@@ -131,11 +137,11 @@ def save_state(state, path=STATE_PATH):
 
 
 def arm(limits=None, note="", path=STATE_PATH, balance=DEFAULT_BALANCE,
-        max_leverage=DEFAULT_LEVERAGE, risk_pct=DEFAULT_RISK_PCT):
+        max_leverage=DEFAULT_LEVERAGE, risk_pct=DEFAULT_RISK_PCT, profiles=None):
     """Start a fresh session with a fresh dummy-dollar account. Deliberately
     discards any previous session's open positions -- carrying them across
     would mix two samples and make the resulting expectancy uninterpretable."""
-    st = new_session(limits, note, balance, max_leverage, risk_pct)
+    st = new_session(limits, note, balance, max_leverage, risk_pct, profiles)
     save_state(st, path)
     return st
 
@@ -413,8 +419,14 @@ def step(state, signals, bars5_by_asset, now=None):
         if bars5 is None or not len(bars5):
             continue
         price = float(bars5["close"].iloc[-1])
+        allowed = state.get("profiles")
         for profile, p in (res.get("profiles") or {}).items():
             if p.get("decision") not in ("LONG", "SHORT"):
+                continue
+            # Filters NEW entries only. An order already open under a profile
+            # that is later switched off still closes normally -- abandoning it
+            # would leave a position with no exit.
+            if allowed and profile not in allowed:
                 continue
             key = f"{asset}|{profile}"
             if key in state.get("open", {}):
@@ -586,6 +598,7 @@ def account_snapshot(state):
         "max_drawdown_pct": round(100 * dd_pct, 2),
         "risk_pct": acct["risk_pct"],
         "max_leverage": acct["max_leverage"],
+        "profiles": state.get("profiles"),
         # The page recomputes floating P&L every few seconds from the live
         # candle close, so it needs the SAME round-turn rate step() charges
         # at close -- otherwise floating P&L and the realised figure it turns
@@ -731,6 +744,16 @@ def load_state_remote_first(path=STATE_PATH):
     return load_state(path)
 
 
+def parse_profiles(req):
+    """'arm:1000:1:SWING' -> ['SWING']; absent or unknown -> None (all)."""
+    parts = (req or "").split(":")
+    if len(parts) < 4 or not parts[3]:
+        return None
+    known = set(backtest.MAX_HOLD_BARS_5M)
+    got = [p for p in parts[3].upper().split(",") if p in known]
+    return got or None
+
+
 def parse_arm(req):
     """('arm:2500:2') -> (2500.0, 2.0). Bad or missing values fall back to the
     defaults rather than raising: a malformed request from the website must
@@ -766,7 +789,8 @@ def apply_remote_intent(state):
     if req and req.split(":", 1)[0] == "arm":
         bal, lev = parse_arm(req)
         return (new_session(state.get("limits"), note="armed from website",
-                            balance=bal, max_leverage=lev),
+                            balance=bal, max_leverage=lev,
+                            profiles=parse_profiles(req)),
                 f"ARMED by website request with ${bal:,.2f} at {lev:g}x")
     if req == "disarm":
         st = dict(state)
@@ -782,7 +806,7 @@ def apply_remote_intent(state):
 
 def simulate(asset="XAUUSD", days=30, balance=DEFAULT_BALANCE,
              max_leverage=DEFAULT_LEVERAGE, step_minutes=15, verbose=True,
-             log=print):
+             log=print, profiles=None):
     """Replay past prices through the LIVE order engine with dummy dollars.
 
     This is not a second backtester. Every order is opened and closed by
@@ -814,7 +838,8 @@ def simulate(asset="XAUUSD", days=30, balance=DEFAULT_BALANCE,
 
     st = new_session({"max_trades": 10**6, "max_drawdown_r": 10**6,
                       "max_days": 10**6}, note=f"simulation {asset} {days}d",
-                     balance=balance, max_leverage=max_leverage)
+                     balance=balance, max_leverage=max_leverage,
+                     profiles=profiles)
     if verbose:
         log(f"\nSIMULATING {asset}: {timeline[0]} -> {timeline[-1]}  "
             f"({len(timeline)} steps)   start ${balance:,.2f} at {max_leverage:g}x\n")
@@ -857,6 +882,8 @@ def main():
     a.add_argument("--note", default="")
     a.add_argument("--balance", type=float, default=DEFAULT_BALANCE,
                    help="dummy dollars to start with")
+    a.add_argument("--profiles", default=None,
+                   help="comma list, e.g. SWING (default: every profile)")
     a.add_argument("--leverage", type=float, default=DEFAULT_LEVERAGE,
                    help="max notional as a multiple of balance (1 = no borrowing)")
 
@@ -871,6 +898,8 @@ def main():
     sm.add_argument("--asset", default="XAUUSD")
     sm.add_argument("--days", type=int, default=30)
     sm.add_argument("--balance", type=float, default=DEFAULT_BALANCE)
+    sm.add_argument("--profiles", default=None,
+                   help="comma list, e.g. SWING (default: every profile)")
     sm.add_argument("--leverage", type=float, default=DEFAULT_LEVERAGE)
     sm.add_argument("--save", action="store_true",
                     help="write the replayed account to paper_state.json so "
@@ -885,7 +914,8 @@ def main():
         st = arm({"max_drawdown_r": args.max_drawdown_r,
                   "max_trades": args.max_trades,
                   "max_days": args.max_days}, note=args.note,
-                 balance=args.balance, max_leverage=args.leverage)
+                 balance=args.balance, max_leverage=args.leverage,
+                 profiles=args.profiles.split(",") if args.profiles else None)
         print(json.dumps(snapshot(st), indent=2, default=str))
     elif args.cmd == "disarm":
         print(json.dumps(snapshot(disarm(args.reason)), indent=2, default=str))
@@ -894,7 +924,8 @@ def main():
     elif args.cmd == "verify":
         print(json.dumps(verify(load_state()), indent=2, default=str))
     elif args.cmd == "simulate":
-        st = simulate(args.asset, args.days, args.balance, args.leverage)
+        st = simulate(args.asset, args.days, args.balance, args.leverage,
+                      profiles=args.profiles.split(",") if args.profiles else None)
         if args.save:
             save_state(st)
             print(f"\nsaved to {STATE_PATH}")
