@@ -210,6 +210,7 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
           <dt>Starting balance</dt><dd id="k-sbal">—</dd>
           <dt>Risk per order</dt><dd id="k-risk">—</dd>
           <dt>Leverage</dt><dd id="k-lev">—</dd>
+          <dt>Trades</dt><dd id="k-scope">—</dd>
           <dt>Orders won</dt><dd id="k-win">—</dd>
           <dt>Fees paid</dt><dd id="k-fee">—</dd>
           <dt>Worst dip</dt><dd id="k-dd">—</dd>
@@ -492,7 +493,7 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
       : (p.last_step ? ("last checked " + fmtTime(p.last_step) + " UTC") : "has not run yet");
 
     if (!acct) {
-      ["a-bal","a-eq","a-fl","a-mg","a-fm","a-pl","a-ret","k-start","k-sbal","k-risk","k-lev","k-win","k-fee","k-dd"]
+      ["a-bal","a-eq","a-fl","a-mg","a-fm","a-pl","a-ret","k-start","k-sbal","k-risk","k-lev","k-scope","k-win","k-fee","k-dd"]
         .forEach(function (id) { $(id).textContent = "—"; });
       var why = p.never_run || !p.status || p.status === "DISARMED"
         ? "No demo account yet." : "This session was started before dollar accounts existed, so it only tracks R.";
@@ -523,6 +524,13 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
     $("k-sbal").textContent = money(acct.starting_balance);
     $("k-risk").textContent = acct.risk_pct + "% of balance";
     $("k-lev").textContent = acct.max_leverage + "×";
+    // What this account may open. A spot account can only buy, so a
+    // "BTCUSD · LONG only" account is the one a real USDT balance could run.
+    var scope = [];
+    if (acct.assets) scope.push(acct.assets.join(", "));
+    if (acct.directions) scope.push(acct.directions.join("/") + " only");
+    if (acct.profiles) scope.push(acct.profiles.join("/"));
+    $("k-scope").textContent = scope.length ? scope.join(" · ") : "every asset, both directions";
     $("k-win").textContent = acct.wins + " of " + acct.orders_closed;
     $("k-fee").textContent = money(acct.fees_usd);
     $("k-dd").textContent = money(acct.max_drawdown_usd) + " (" + acct.max_drawdown_pct.toFixed(1) + "%)";

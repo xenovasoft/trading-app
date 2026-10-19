@@ -96,7 +96,7 @@ def new_account(balance=DEFAULT_BALANCE, max_leverage=DEFAULT_LEVERAGE,
 
 def new_session(limits=None, note="", balance=DEFAULT_BALANCE,
                 max_leverage=DEFAULT_LEVERAGE, risk_pct=DEFAULT_RISK_PCT,
-                profiles=None):
+                profiles=None, assets=None, directions=None):
     lim = dict(DEFAULTS)
     lim.update(limits or {})
     return {
@@ -106,6 +106,12 @@ def new_session(limits=None, note="", balance=DEFAULT_BALANCE,
         # at -0.168R (PF 0.68), with essentially zero edge before fees
         # (+0.010R) and 0.177R of fees per trade, while SWING paid 0.053R.
         "profiles": list(profiles) if profiles else None,
+        # Same idea, per asset and per direction. directions=["LONG"] is what
+        # a SPOT account can trade: it holds the coin or it doesn't, and
+        # selling short needs margin or futures. The pre-registered
+        # out-of-sample test that passed was BTC longs specifically.
+        "assets": list(assets) if assets else None,
+        "directions": list(directions) if directions else None,
         "status": ARMED,
         "started_at": _iso(_now()),
         "stopped_at": None,
@@ -137,11 +143,13 @@ def save_state(state, path=STATE_PATH):
 
 
 def arm(limits=None, note="", path=STATE_PATH, balance=DEFAULT_BALANCE,
-        max_leverage=DEFAULT_LEVERAGE, risk_pct=DEFAULT_RISK_PCT, profiles=None):
+        max_leverage=DEFAULT_LEVERAGE, risk_pct=DEFAULT_RISK_PCT, profiles=None,
+        assets=None, directions=None):
     """Start a fresh session with a fresh dummy-dollar account. Deliberately
     discards any previous session's open positions -- carrying them across
     would mix two samples and make the resulting expectancy uninterpretable."""
-    st = new_session(limits, note, balance, max_leverage, risk_pct, profiles)
+    st = new_session(limits, note, balance, max_leverage, risk_pct, profiles,
+                     assets, directions)
     save_state(st, path)
     return st
 
@@ -420,6 +428,8 @@ def step(state, signals, bars5_by_asset, now=None):
             continue
         price = float(bars5["close"].iloc[-1])
         allowed = state.get("profiles")
+        if state.get("assets") and asset not in state["assets"]:
+            continue
         for profile, p in (res.get("profiles") or {}).items():
             if p.get("decision") not in ("LONG", "SHORT"):
                 continue
@@ -427,6 +437,8 @@ def step(state, signals, bars5_by_asset, now=None):
             # that is later switched off still closes normally -- abandoning it
             # would leave a position with no exit.
             if allowed and profile not in allowed:
+                continue
+            if state.get("directions") and p.get("decision") not in state["directions"]:
                 continue
             key = f"{asset}|{profile}"
             if key in state.get("open", {}):
@@ -599,6 +611,8 @@ def account_snapshot(state, max_closed=25):
         "risk_pct": acct["risk_pct"],
         "max_leverage": acct["max_leverage"],
         "profiles": state.get("profiles"),
+        "assets": state.get("assets"),
+        "directions": state.get("directions"),
         # The page recomputes floating P&L every few seconds from the live
         # candle close, so it needs the SAME round-turn rate step() charges
         # at close -- otherwise floating P&L and the realised figure it turns
@@ -976,6 +990,8 @@ def main():
     a.add_argument("--note", default="")
     a.add_argument("--balance", type=float, default=DEFAULT_BALANCE,
                    help="dummy dollars to start with")
+    a.add_argument("--assets", default=None, help="comma list, e.g. BTCUSD")
+    a.add_argument("--directions", default=None, help="LONG for a spot account")
     a.add_argument("--profiles", default=None,
                    help="comma list, e.g. SWING (default: every profile)")
     a.add_argument("--leverage", type=float, default=DEFAULT_LEVERAGE,
@@ -1020,7 +1036,9 @@ def main():
                   "max_trades": args.max_trades,
                   "max_days": args.max_days}, note=args.note,
                  balance=args.balance, max_leverage=args.leverage,
-                 profiles=args.profiles.split(",") if args.profiles else None)
+                 profiles=args.profiles.split(",") if args.profiles else None,
+                 assets=args.assets.split(",") if args.assets else None,
+                 directions=args.directions.upper().split(",") if args.directions else None)
         print(json.dumps(snapshot(st), indent=2, default=str))
     elif args.cmd == "disarm":
         print(json.dumps(snapshot(disarm(args.reason)), indent=2, default=str))
@@ -1051,6 +1069,14 @@ def main():
             df = df[df.profile.isin(args.profiles.split(","))]
         st = account_from_trades(df.to_dict("records"), balance=args.balance,
                                  note=args.name)
+        # The filter was applied to the trade list above; record it on the
+        # account too, so the terminal shows the test's real scope.
+        if args.long_only:
+            st["directions"] = ["LONG"]
+        if args.profiles:
+            st["profiles"] = args.profiles.split(",")
+        if len(df):
+            st["assets"] = sorted(df.asset.unique().tolist())
         asset = df.asset.iloc[0] if len(df) else ""
         m = export_test(st, args.id, args.name, asset, args.description)
         print(f"exported {m['id']}: {m['orders']} orders, {m['return_pct']:+.2f}%, "

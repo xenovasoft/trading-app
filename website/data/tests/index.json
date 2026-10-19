@@ -1,5 +1,44 @@
 [
  {
+  "id": "btc-oos-long",
+  "name": "BTC \u00b7 long only, untouched test (PASSED)",
+  "asset": "BTCUSD",
+  "description": "The pre-registered out-of-sample test: Oct 2025 to Apr 2026, a window never examined before the test was written. BTC fell 29.7%, yet these longs beat random buying by +0.247R a trade (p = 0.053).",
+  "window": [
+   "2025-10-24 04:15:00",
+   "2026-04-24 02:30:00"
+  ],
+  "refused_for_margin": 0,
+  "orders": 69,
+  "return_pct": 8.43
+ },
+ {
+  "id": "btc-180d-long",
+  "name": "BTC \u00b7 long only (spot USDT)",
+  "asset": "BTCUSD",
+  "description": "Only the BUY trades, because a spot USDT account cannot sell short. Found by slicing the data 8 ways; confirmed afterwards on untouched data.",
+  "window": [
+   "2026-05-01 08:45:00",
+   "2026-10-10 22:45:00"
+  ],
+  "refused_for_margin": 0,
+  "orders": 59,
+  "return_pct": 4.47
+ },
+ {
+  "id": "gold-180d-swing",
+  "name": "Gold \u00b7 SWING only",
+  "asset": "XAUUSD",
+  "description": "The setting the live demo used first: SCALP switched off because fees made it lose.",
+  "window": [
+   "2026-06-12 00:30:00",
+   "2026-10-18 22:30:00"
+  ],
+  "refused_for_margin": 0,
+  "orders": 14,
+  "return_pct": 0.57
+ },
+ {
   "id": "gold-180d",
   "name": "Gold \u00b7 180-day backtest",
   "asset": "XAUUSD",
@@ -24,32 +63,6 @@
   "refused_for_margin": 0,
   "orders": 125,
   "return_pct": 3.25
- },
- {
-  "id": "btc-180d-long",
-  "name": "BTC \u00b7 long only (spot USDT)",
-  "asset": "BTCUSD",
-  "description": "Only the BUY trades, because a spot USDT account cannot sell short. The most promising result so far, with about a 1-in-3 chance it is luck.",
-  "window": [
-   "2026-05-01 08:45:00",
-   "2026-10-10 22:45:00"
-  ],
-  "refused_for_margin": 0,
-  "orders": 59,
-  "return_pct": 4.47
- },
- {
-  "id": "gold-180d-swing",
-  "name": "Gold \u00b7 SWING only",
-  "asset": "XAUUSD",
-  "description": "The setting used for the live demo: SCALP switched off because fees made it lose.",
-  "window": [
-   "2026-06-12 00:30:00",
-   "2026-10-18 22:30:00"
-  ],
-  "refused_for_margin": 0,
-  "orders": 14,
-  "return_pct": 0.57
  },
  {
   "id": "gold-7d-live-engine",
