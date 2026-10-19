@@ -12,7 +12,9 @@
 create table if not exists public.paper_state (
   id          integer primary key,
   payload     jsonb,
-  requested   text check (requested in ('arm','disarm')),
+  -- 'disarm', 'arm', or 'arm:<balance>:<leverage>' -- the dummy-dollar
+  -- amount rides in the intent because the page and engine share no process.
+  requested   text check (requested = 'disarm' or requested like 'arm%'),
   updated_at  timestamptz default now()
 );
 

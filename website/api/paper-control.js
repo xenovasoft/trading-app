@@ -51,12 +51,27 @@ export default async function handler(req, res) {
   }
 
   let action = null;
+  let balance = 1000;
+  let leverage = 1;
   try {
     const body =
       typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
     action = body.action;
+    if (body.balance != null) balance = Number(body.balance);
+    if (body.leverage != null) leverage = Number(body.leverage);
   } catch {
     return res.status(400).json({ error: "body must be JSON" });
+  }
+  // Same bounds papertrader.parse_arm() enforces. Rejected here so the user
+  // sees the error now, instead of the engine silently substituting a
+  // default 15 minutes later.
+  if (action === "arm") {
+    if (!Number.isFinite(balance) || balance < 1 || balance > 1e9) {
+      return res.status(400).json({ error: "balance must be between 1 and 1,000,000,000" });
+    }
+    if (!Number.isFinite(leverage) || leverage < 1 || leverage > 10) {
+      return res.status(400).json({ error: "leverage must be between 1 and 10" });
+    }
   }
 
   if (!VALID.has(action)) {
@@ -77,7 +92,13 @@ export default async function handler(req, res) {
       method: "POST",
       headers,
       body: JSON.stringify([
-        { id: 1, requested: action, updated_at: new Date().toISOString() },
+        {
+          id: 1,
+          // The amount rides inside the intent string: this column is the only
+          // channel between the page and the engine, which share no process.
+          requested: action === "arm" ? `arm:${balance}:${leverage}` : action,
+          updated_at: new Date().toISOString(),
+        },
       ]),
     });
     if (!r.ok) {
@@ -91,7 +112,7 @@ export default async function handler(req, res) {
       requested: action,
       detail:
         action === "arm"
-          ? "a fresh paper session will start on the next engine cycle (within 15 minutes)"
+          ? `a fresh paper account with $${balance.toLocaleString()} at ${leverage}x will start on the next engine cycle (within 15 minutes)`
           : "the session will stop on the next engine cycle (within 15 minutes)",
     });
   } catch (e) {
