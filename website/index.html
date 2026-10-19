@@ -178,12 +178,14 @@
   #refresh svg{width:13px;height:13px;display:block}
   #refresh.busy svg{animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
-  #guideBtn{appearance:none;-webkit-appearance:none;cursor:pointer;
+  #termBtn{text-decoration:none;color:inherit}
+  #guideBtn,#termBtn{appearance:none;-webkit-appearance:none;cursor:pointer;
     background:var(--card2);color:var(--tx);border:1px solid var(--bd);
     border-radius:999px;padding:7px 14px;font-size:12px;font-weight:600;
     font-family:inherit;display:inline-flex;align-items:center;gap:6px;
     transition:background .15s,border-color .15s;-webkit-tap-highlight-color:transparent}
-  #guideBtn:hover{background:#232838;border-color:#3a4152}
+  #guideBtn:hover,#termBtn:hover{background:#232838;border-color:#3a4152}
+  #termBtn svg{width:13px;height:13px;display:block}
   #guideBtn svg{width:13px;height:13px;display:block}
   #scalpBtn{appearance:none;-webkit-appearance:none;cursor:pointer;
     background:var(--card2);color:var(--tx);border:1px solid var(--bd);
@@ -270,6 +272,13 @@
       </svg>
       <span>Scalp</span>
     </button>
+    <a id="termBtn" href="/terminal.html" title="Paper trading terminal: chart, orders, demo account">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
+           stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 3v18h18"/><path d="m7 15 4-4 3 3 5-6"/>
+      </svg>
+      <span>Terminal</span>
+    </a>
     <button id="guideBtn" type="button" title="Har term ka matlab samjhein">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"
            stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">

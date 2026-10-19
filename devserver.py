@@ -94,6 +94,58 @@ def seed_demo():
     return st
 
 
+KRAKEN_TF = {"5m": 5, "15m": 15, "1h": 60, "4h": 240, "1d": 1440}
+KRAKEN_PAIR = {"BTCUSD": "XBTUSD", "XAUUSD": "PAXGUSD"}
+
+
+def fetch_candles(asset, tf):
+    """Same sources as website/api/candles.js, so local and production charts
+    show the same bars. Gold is Kraken PAXGUSD -- the instrument the engine
+    fills paper orders on -- which is why the terminal computes floating P&L
+    from these closes and not from /api/ticker (that averages PAXG with XAUT
+    for display, and PAXG carries a ~$11 premium over XAUT)."""
+    import requests
+    if tf not in KRAKEN_TF:
+        raise ValueError(f"unknown timeframe {tf!r}")
+    if asset in KRAKEN_PAIR:
+        r = requests.get("https://api.kraken.com/0/public/OHLC",
+                         params={"pair": KRAKEN_PAIR[asset],
+                                 "interval": KRAKEN_TF[tf]}, timeout=15)
+        j = r.json()
+        if j.get("error"):
+            raise RuntimeError(", ".join(j["error"]))
+        key = next(k for k in j["result"] if k != "last")
+        return [{"time": int(row[0]), "open": float(row[1]), "high": float(row[2]),
+                 "low": float(row[3]), "close": float(row[4])}
+                for row in j["result"][key]]
+    if asset == "XAGUSD":
+        yf = {"5m": ("5m", "5d"), "15m": ("15m", "5d"), "1h": ("60m", "1mo"),
+              "4h": ("60m", "3mo"), "1d": ("1d", "1y")}[tf]
+        r = requests.get("https://query1.finance.yahoo.com/v8/finance/chart/SI=F",
+                         params={"interval": yf[0], "range": yf[1]},
+                         headers={"User-Agent": "Mozilla/5.0"}, timeout=15)
+        res = r.json()["chart"]["result"][0]
+        q = res["indicators"]["quote"][0]
+        out = [{"time": int(t), "open": q["open"][i], "high": q["high"][i],
+                "low": q["low"][i], "close": q["close"][i]}
+               for i, t in enumerate(res.get("timestamp") or [])
+               if None not in (q["open"][i], q["high"][i], q["low"][i], q["close"][i])]
+        if tf == "4h":
+            buckets = {}
+            for c in out:
+                b = c["time"] // 14400 * 14400
+                if b not in buckets:
+                    buckets[b] = dict(c, time=b)
+                else:
+                    x = buckets[b]
+                    x["high"] = max(x["high"], c["high"])
+                    x["low"] = min(x["low"], c["low"])
+                    x["close"] = c["close"]
+            out = [buckets[k] for k in sorted(buckets)]
+        return out
+    raise ValueError(f"unknown asset {asset!r}")
+
+
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **k):
         super().__init__(*a, directory=WEB, **k)
@@ -147,7 +199,13 @@ class Handler(SimpleHTTPRequestHandler):
                                "note": "no live feed configured locally"})
 
         if u.path == "/api/candles":
-            return self._json([])
+            asset = (q.get("asset") or ["XAUUSD"])[0].upper()
+            tf = (q.get("tf") or ["1h"])[0]
+            try:
+                return self._json({"asset": asset, "tf": tf,
+                                   "candles": fetch_candles(asset, tf)})
+            except Exception as e:
+                return self._json({"error": str(e)}, 502)
 
         if u.path.startswith("/api/"):
             return self._json({"error": "not implemented locally"}, 404)
@@ -167,12 +225,16 @@ class Handler(SimpleHTTPRequestHandler):
 
         action = body.get("action")
         if action == "arm":
+            bal, lev = papertrader.parse_arm(
+                f"arm:{body.get('balance', '')}:{body.get('leverage', '')}")
             papertrader.arm({"max_trades": 60, "max_drawdown_r": 25.0},
-                            note="armed from local dev server")
+                            note="armed from local dev server",
+                            balance=bal, max_leverage=lev)
             return self._json({"ok": True, "requested": "arm",
-                               "detail": "session armed (immediate locally; "
-                                         "in production this waits for the "
-                                         "next 15-minute engine cycle)"})
+                               "detail": f"paper account started with ${bal:,.2f} "
+                                         f"at {lev:g}x (immediate locally; in "
+                                         "production this waits for the next "
+                                         "15-minute engine cycle)"})
         if action == "disarm":
             papertrader.disarm("stopped from local dev server")
             return self._json({"ok": True, "requested": "disarm",

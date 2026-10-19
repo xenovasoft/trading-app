@@ -44,8 +44,12 @@ export default async function handler(req, res) {
       });
     }
     const row = rows[0];
+    // payload._state is the engine's complete resume record (every trade,
+    // every fingerprint). The page renders from the snapshot fields beside
+    // it, so strip it rather than send the whole ledger on every poll.
+    const { _state, ...payload } = row.payload || {};
     return res.status(200).json({
-      ...(row.payload || {}),
+      ...payload,
       pending_request: row.requested || null,
       updated_at: row.updated_at,
     });

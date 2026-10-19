@@ -19,8 +19,7 @@
       "runtimeArgs": [
         "devserver.py",
         "--port",
-        "8934",
-        "--demo"
+        "8934"
       ],
       "port": 8934
     }
