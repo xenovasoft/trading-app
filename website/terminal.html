@@ -121,6 +121,20 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
 .type{font-family:var(--sans); font-weight:700; font-size:11.5px; letter-spacing:.03em}
 .type.buy{color:var(--blu)} .type.sell{color:var(--red)}
 .empty{padding:28px 16px; text-align:center; color:var(--dim)}
+/* When the 10-column table is wider than its box, Profit and Balance --
+   the columns that matter most -- are the ones pushed off the right edge.
+   So each order becomes a card with the result pinned top-right. Which one
+   shows is decided by MEASURING the table (fitTables), not by a breakpoint:
+   a 640px guess still cut those columns off at 800px. */
+.cards{display:none; list-style:none; margin:0; padding:0}
+.cards li{display:grid; grid-template-columns:minmax(0,1fr) auto; gap:2px 12px; padding:10px 14px; border-bottom:1px solid var(--bd)}
+.cards .ct{font-weight:650; font-size:13px; min-width:0}
+.cards .cp{font-family:var(--mono); font-variant-numeric:tabular-nums; font-weight:700; font-size:14px; text-align:right; white-space:nowrap}
+.cards .cs{font-family:var(--mono); font-variant-numeric:tabular-nums; font-size:11.5px; color:var(--dim); min-width:0}
+.cards .cs.r{text-align:right; white-space:nowrap}
+.cards .cw{grid-column:1 / -1}
+.cards .ctot{background:var(--card); font-weight:650}
+.tbox.narrow .pane table{display:none} .tbox.narrow .cards{display:block}
 .empty b{color:var(--tx)}
 #eqchart{height:280px}
 .journal{list-style:none; margin:0; padding:6px 0}
@@ -331,6 +345,13 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
   new ResizeObserver(function () {
     chart.applyOptions({ width: chartEl.clientWidth, height: chartEl.clientHeight });
   }).observe(chartEl);
+  // Width only: switching table <-> cards changes the box's HEIGHT, and
+  // re-measuring on that would bounce between the two forever.
+  var tboxW = 0;
+  new ResizeObserver(function (ents) {
+    var w = Math.round(ents[0].contentRect.width);
+    if (w !== tboxW) { tboxW = w; fitTables(); }
+  }).observe(document.querySelector(".tbox"));
 
   var eqEl = $("eqchart"), eqChart = null, eqSeries = null;
   function ensureEqChart() {
@@ -516,8 +537,16 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
           "<td>" + Number(o.units).toFixed(4) + "</td><td>" + px(o.entry, o.asset) + "</td><td class='neg'>" + px(o.stop, o.asset) + "</td><td class='pos'>" + px(o.target, o.asset) + "</td>" +
           "<td>" + px(last, o.asset) + "</td><td>" + money(o.risk_usd) + "</td><td class='" + cls(f) + "'>" + money(f, true) + "</td></tr>";
       }).join("");
+      var tcards = acct.open_orders.map(function (o) {
+        var last = state.last[o.asset], f = floating(o, last);
+        return "<li><span class='ct'><span class='type " + (isLong(o) ? "buy'>BUY" : "sell'>SELL") + "</span> " + o.asset + " <span class='mut'>" + o.profile + "</span></span>" +
+          "<span class='cp " + cls(f) + "'>" + money(f, true) + "</span>" +
+          "<span class='cs'>" + px(o.entry, o.asset) + " → " + px(last, o.asset) + "</span><span class='cs r'>risk " + money(o.risk_usd) + "</span>" +
+          "<span class='cs cw'>SL " + px(o.stop, o.asset) + " · TP " + px(o.target, o.asset) + " · " + Number(o.units).toFixed(4) + " units</span></li>";
+      }).join("");
       $("p-trade").innerHTML = "<table><thead><tr><th>Symbol</th><th>Time (UTC)</th><th>Type</th><th>Units</th><th>Price</th><th>S/L</th><th>T/P</th><th>Current</th><th>Risk</th><th>Profit</th></tr></thead><tbody>" +
-        rows + "</tbody><tfoot><tr><td colspan='9'>Floating, after fees</td><td class='" + cls(fl) + "'>" + money(fl, true) + "</td></tr></tfoot></table>";
+        rows + "</tbody><tfoot><tr><td colspan='9'>Floating, after fees</td><td class='" + cls(fl) + "'>" + money(fl, true) + "</td></tr></tfoot></table>" +
+        "<ul class='cards'>" + tcards + "<li class='ctot'><span class='ct'>Floating, after fees</span><span class='cp " + cls(fl) + "'>" + money(fl, true) + "</span></li></ul>";
     }
 
     // ---- History tab
@@ -532,8 +561,18 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
           "<td>" + Number(o.units).toFixed(4) + "</td><td>" + px(o.entry, o.asset) + "</td><td>" + px(o.exit, o.asset) + "</td><td class='mut' style='font-family:var(--sans)'>" + why + "</td>" +
           "<td>" + (o.r_multiple != null ? (o.r_multiple >= 0 ? "+" : "") + o.r_multiple.toFixed(2) + "R" : "—") + "</td><td class='" + cls(o.pnl_usd) + "'>" + money(o.pnl_usd, true) + "</td><td>" + money(o.balance_after) + "</td></tr>";
       }).join("");
+      var hcards = hist.map(function (o) {
+        var why = { SL: "stop loss", TP: "take profit", TIME: "time limit" }[o.exit_reason] || o.exit_reason;
+        var r = o.r_multiple != null ? (o.r_multiple >= 0 ? "+" : "") + o.r_multiple.toFixed(2) + "R" : "—";
+        return "<li><span class='ct'><span class='type " + (isLong(o) ? "buy'>BUY" : "sell'>SELL") + "</span> " + o.asset + " <span class='mut'>" + o.profile + "</span></span>" +
+          "<span class='cp " + cls(o.pnl_usd) + "'>" + money(o.pnl_usd, true) + "</span>" +
+          "<span class='cs'>" + fmtTime(o.exit_time) + " · " + why + "</span><span class='cs r'>" + money(o.balance_after) + "</span>" +
+          "<span class='cs cw'>" + px(o.entry, o.asset) + " → " + px(o.exit, o.asset) + " · " + Number(o.units).toFixed(4) + " units · " + r + "</span></li>";
+      }).join("");
       $("p-hist").innerHTML = "<table><thead><tr><th>Symbol</th><th>Closed (UTC)</th><th>Type</th><th>Units</th><th>Open</th><th>Close</th><th>Reason</th><th>R</th><th>Profit</th><th>Balance</th></tr></thead><tbody>" +
-        hr + "</tbody><tfoot><tr><td colspan='8'>Total, after " + money(acct.fees_usd) + " fees</td><td class='" + cls(acct.pnl_usd) + "'>" + money(acct.pnl_usd, true) + "</td><td>" + money(acct.balance) + "</td></tr></tfoot></table>";
+        hr + "</tbody><tfoot><tr><td colspan='8'>Total, after " + money(acct.fees_usd) + " fees</td><td class='" + cls(acct.pnl_usd) + "'>" + money(acct.pnl_usd, true) + "</td><td>" + money(acct.balance) + "</td></tr></tfoot></table>" +
+        "<ul class='cards'><li class='ctot'><span class='ct'>Total, after " + money(acct.fees_usd) + " fees</span><span class='cp " + cls(acct.pnl_usd) + "'>" + money(acct.pnl_usd, true) + "</span>" +
+        "<span class='cs'>" + acct.orders_closed + " orders · " + acct.wins + " won</span><span class='cs r'>" + money(acct.balance) + "</span></li>" + hcards + "</ul>";
     }
 
     // ---- Journal
@@ -553,6 +592,18 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
     // ---- Balance curve
     if (!$("p-eq").hidden) drawEquity();
     drawOrders();
+    fitTables();
+  }
+
+  // Cards replace the table exactly when the table would overflow its box.
+  // Measured on the visible tab; Balance, Journal and empty tabs have no
+  // table to measure, so they keep whatever mode was last decided.
+  function fitTables() {
+    var tb = document.querySelector(".tbox"); if (!tb) return;
+    var pane = tb.querySelector(".pane:not([hidden])");
+    if (!pane || !pane.querySelector("table")) return;
+    tb.classList.remove("narrow");
+    tb.classList.toggle("narrow", pane.scrollWidth > pane.clientWidth + 1);
   }
 
   function drawEquity() {
@@ -593,6 +644,7 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
       $(t.getAttribute("aria-controls")).hidden = !on;
     });
     if (name === "eq") drawEquity();
+    fitTables();
   }
   function saveView() {
     var v = { src: state.source, tab: currentTab(), sym: state.sym, tf: state.tf };
