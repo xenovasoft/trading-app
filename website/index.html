@@ -166,7 +166,9 @@
   .tab .dot{width:7px;height:7px;border-radius:50%;background:var(--gry);flex:0 0 auto}
   .tab .dot.long{background:var(--grn)} .tab .dot.short{background:var(--red)}
   .tab .dot.wait{background:var(--amb)} .tab .dot.stale{background:#7f1d1d}
-  .hright{display:flex;align-items:center;gap:10px}
+  /* wrap: with four buttons the row is ~450px, wider than most phones, and
+     nowrap pushed Refresh off the right edge. */
+  .hright{display:flex;align-items:center;gap:8px 10px;flex-wrap:wrap}
   #refresh{appearance:none;-webkit-appearance:none;cursor:pointer;
     background:var(--card2);color:var(--tx);border:1px solid var(--bd);
     border-radius:999px;padding:7px 14px;font-size:12px;font-weight:600;
@@ -257,6 +259,22 @@
   .pbtn:focus-visible{outline:2px solid var(--blu);outline-offset:2px}
   .pnote{font-size:11px;color:var(--dim);margin-top:8px;line-height:1.5}
   .pnote.err{color:#fca5a5}
+  .paper .pos{color:var(--grn)} .paper .neg{color:var(--red)}
+  .pbig{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+  .pbig div{display:flex;flex-direction:column;gap:2px;min-width:0}
+  .plab2{font-size:10.5px;font-weight:650;letter-spacing:.07em;text-transform:uppercase;color:var(--dim)}
+  .pbig b{font-size:22px;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
+  .pchip{font-size:11px;font-weight:650;padding:3px 9px;border-radius:999px;background:var(--card2);border:1px solid var(--bd);color:var(--tx)}
+  .porders{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+  .porders .plab2{margin-top:4px}
+  .porder{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;background:var(--card2);border:1px solid var(--bd);border-radius:10px;padding:8px 11px;font-size:12px}
+  .porder .ot{font-weight:650;min-width:0}
+  .porder .op{font-weight:700;text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .porder .od{color:var(--dim);font-variant-numeric:tabular-nums;grid-column:1 / -1;min-width:0}
+  .ptype{font-weight:700} .ptype.buy{color:var(--blu)} .ptype.sell{color:var(--red)}
+  .pgo{display:block;text-align:center;text-decoration:none;background:var(--blu);border-color:var(--blu);color:#fff;font-size:13.5px;padding:10px 16px}
+  .pgo:hover{filter:brightness(1.08)}
 </style>
 </head>
 <body>
@@ -312,13 +330,17 @@
 </div>
 <div class="paper hidden" id="paperPanel">
   <div class="ptop2">
-    <span class="ptitle">Paper forward test</span>
+    <span class="ptitle">Demo account · pretend money</span>
     <span class="pstat off" id="paperStatus">—</span>
   </div>
-  <div class="pbars" id="paperBars"></div>
-  <div class="pverdict" id="paperVerdict"></div>
+  <div class="pbig">
+    <div><span class="plab2">Equity</span><b id="pEq">—</b></div>
+    <div><span class="plab2">Profit / loss</span><b id="pPnl">—</b></div>
+  </div>
+  <div class="pchips" id="pChips"></div>
   <div class="prow2" id="paperRow"></div>
-  <button class="pbtn" id="paperBtn" type="button">—</button>
+  <div class="porders" id="paperOrders"></div>
+  <a class="pbtn pgo" id="paperGo" href="/terminal.html#src=live&amp;tab=trade">Open trading terminal →</a>
   <div class="pnote" id="paperNote"></div>
 </div>
 <div id="root"><div class="empty">Loading…</div></div>
@@ -1070,113 +1092,116 @@ pollTickers();setInterval(pollTickers,2000);
 </script>
 
 <script>
-/* Paper forward test panel.
-   Reads /api/paper (a mirror of papertrader.snapshot()) and writes an intent
-   to /api/paper-control. The control is deliberately not optimistic: the
-   engine runs on a 15-minute cron, so the button reports "requested" and the
-   panel keeps showing the real engine-side status until it actually changes.
-   Pretending otherwise would teach the user to trust a Stop that has not
-   happened yet. */
+/* Demo account summary on the home screen.
+   This is what a phone sees first, so it shows the dummy-dollar account
+   itself -- equity, profit, what it trades, open and recent orders -- and
+   puts the full MT5-style terminal one tap away. Starting and stopping the
+   account live in the terminal only, next to the form that sets the amount,
+   so there is one place to manage it and no way to reset it by accident here.
+   Floating profit uses the same PAXG/XBT candles the engine fills on, and the
+   same fee-inclusive formula, as the terminal. */
 (function(){
-  var panel=document.getElementById("paperPanel");
-  var elStatus=document.getElementById("paperStatus"),
-      elBars=document.getElementById("paperBars"),
-      elVerdict=document.getElementById("paperVerdict"),
-      elRow=document.getElementById("paperRow"),
-      elBtn=document.getElementById("paperBtn"),
-      elNote=document.getElementById("paperNote");
-  var state=null, busy=false;
+  var $=function(id){return document.getElementById(id);};
+  var panel=$("paperPanel"), state=null, last={};
 
-  function bar(label,used,limit,unit){
-    var pct=limit>0?Math.min(100,100*used/limit):0;
-    var cls=pct>=100?"bad":pct>=70?"warn":"";
-    return '<div class="pbar"><div class="plab"><span>'+label+
-      '</span><b>'+used.toFixed(unit==="R"?1:0)+(unit||"")+" / "+
-      limit.toFixed(unit==="R"?1:0)+(unit||"")+'</b></div>'+
-      '<div class="ptrack"><div class="pfill '+cls+'" style="width:'+pct+'%"></div></div></div>';
+  function money(v,sign){
+    if(v==null||!isFinite(v)) return "—";
+    var s=Math.abs(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});
+    return (sign?(v>0?"+":v<0?"−":""):(v<0?"−":""))+"$"+s;
+  }
+  function cls(v){return v>0?"pos":v<0?"neg":"";}
+  function unix(s){ if(!s) return null; var t=String(s).replace(" ","T");
+    if(!/[zZ]|[+-]\d\d:?\d\d$/.test(t)) t+="Z"; var ms=Date.parse(t); return isFinite(ms)?ms:null; }
+  function ago(ms){ var m=Math.round((Date.now()-ms)/60000);
+    return m<1?"just now":m<60?m+"m ago":m<1440?Math.round(m/60)+"h ago":Math.round(m/1440)+"d ago"; }
+  function px(v){ return v==null?"—":Number(v).toLocaleString(undefined,{maximumFractionDigits:2}); }
+  function floating(o,acct){
+    var p=last[o.asset]; if(p==null||!o.units) return null;
+    var mv=o.direction==="LONG"?p-o.entry:o.entry-p;
+    return (mv-o.entry*(acct.fee_rate||0.0004))*o.units;
   }
 
   function render(){
     panel.classList.remove("hidden");
-    if(!state){ elStatus.textContent="unavailable"; elStatus.className="pstat off"; return; }
+    var st=$("paperStatus");
+    if(!state){ st.textContent="unavailable"; st.className="pstat off"; return; }
+    var status=state.status||"DISARMED", pend=state.pending_request;
+    st.textContent=pend?(String(pend).indexOf("arm")===0?"starting…":"stopping…"):status;
+    st.className="pstat "+(pend?"pend":status==="ARMED"?"on":status==="STOPPED"?"stop":"off");
 
-    var st=state.status||"DISARMED", pend=state.pending_request;
-    elStatus.textContent = pend ? (pend==="arm"?"starting…":"stopping…") : st;
-    elStatus.className = "pstat "+(pend?"pend":st==="ARMED"?"on":st==="STOPPED"?"stop":"off");
-
-    var lim=state.limits||{}, n=state.closed_trades||0, dd=state.max_dd_r||0;
-    elBars.innerHTML = (lim.max_trades?bar("Trades recorded",n,lim.max_trades,""):"")+
-                       (lim.max_drawdown_r?bar("Drawdown",dd,lim.max_drawdown_r,"R"):"");
-
-    var v=state.verification||{};
-    if(state.never_run){
-      elVerdict.innerHTML="<b>No session has run yet.</b> Starting one records "+
-        "the engine's signals as simulated trades — no money and no broker "+
-        "involved — so the backtest's −0.092R can be checked against bars "+
-        "nobody has seen.";
-    }else if(v.verdict && v.n>=10){
-      elVerdict.innerHTML="<b>"+v.verdict+"</b> — forward "+
-        (v.expectancy_r>=0?"+":"")+v.expectancy_r.toFixed(3)+"R vs backtest "+
-        v.backtest_expectancy_r.toFixed(3)+"R (z="+(v.z>=0?"+":"")+v.z.toFixed(2)+
-        "). "+(v.detail||"");
-    }else{
-      elVerdict.innerHTML="<b>"+(v.detail||"collecting sample")+"</b>";
+    var acct=state.account;
+    if(!acct){
+      $("pEq").textContent="—"; $("pPnl").textContent="—"; $("pChips").innerHTML="";
+      $("paperRow").innerHTML=""; $("paperOrders").innerHTML="";
+      $("paperNote").textContent="No dollar demo account yet. Open the terminal to start one with pretend money.";
+      return;
     }
+    var fl=0; acct.open_orders.forEach(function(o){ var f=floating(o,acct); if(f!=null) fl+=f; });
+    var eq=acct.balance+fl, pnl=eq-acct.starting_balance;
+    var pct=acct.starting_balance?100*pnl/acct.starting_balance:0;
+    $("pEq").textContent=money(eq);
+    // The percentage sits on its own line: beside the dollar figure it no
+    // longer fits half a phone's width and was being cut off.
+    var pctTxt=(pct>0?"+":pct<0?"−":"")+Math.abs(pct).toFixed(2)+"%";
+    $("pPnl").innerHTML='<span class="'+cls(pnl)+'">'+money(pnl,true)+'</span>'+
+      '<span class="'+cls(pnl)+'" style="display:block;font-size:13px;font-weight:600">'+pctTxt+'</span>';
 
-    var open=(state.open_positions||[]).length;
-    elRow.innerHTML="<span>open <b>"+open+"</b></span>"+
-      "<span>total <b>"+(state.total_r>=0?"+":"")+(state.total_r||0).toFixed(2)+"R</b></span>"+
-      (state.stop_reason?"<span>stopped: <b>"+state.stop_reason+"</b></span>":"");
+    var chips=[];
+    chips.push(acct.assets?acct.assets.join(", "):"All assets");
+    chips.push(acct.directions?acct.directions.join("/")+" only":"Buy and sell");
+    if(acct.profiles) chips.push(acct.profiles.join("/"));
+    chips.push("Started with "+money(acct.starting_balance));
+    $("pChips").innerHTML=chips.map(function(c){return '<span class="pchip">'+c+'</span>';}).join("");
 
-    var running = st==="ARMED";
-    elBtn.textContent = pend ? "request sent" : running ? "Stop session" : "Start paper session";
-    elBtn.className = "pbtn"+(running?" danger":"");
-    elBtn.disabled = busy || !!pend;
-    if(!elNote.classList.contains("err")){
-      elNote.textContent = running
-        ? "Stops itself on "+(lim.max_drawdown_r||0)+"R drawdown, "+
-          (lim.max_trades||0)+" trades, "+(lim.max_days||0)+" days, or a stale feed."
-        : "Simulated orders only — this code has no path to a broker.";
+    var lsMs=unix(state.last_step), late=lsMs&&(Date.now()-lsMs)>30*60000;
+    $("paperRow").innerHTML="<span>open <b>"+acct.open_orders.length+"</b></span>"+
+      "<span>closed <b>"+acct.orders_closed+"</b></span>"+
+      "<span>won <b>"+acct.wins+"</b></span>"+
+      "<span>bot last checked <b"+(late?' style="color:var(--amb)"':"")+">"+(lsMs?ago(lsMs):"never")+"</b></span>";
+
+    var html="";
+    if(acct.open_orders.length){
+      html+='<span class="plab2">Open now</span>';
+      acct.open_orders.forEach(function(o){
+        var f=floating(o,acct);
+        html+='<div class="porder"><span class="ot"><span class="ptype '+(o.direction==="LONG"?"buy\">BUY":"sell\">SELL")+'</span> '+o.asset+'</span>'+
+          '<span class="op '+cls(f)+'">'+money(f,true)+'</span>'+
+          '<span class="od">at '+px(o.entry)+' · stop '+px(o.stop)+' · target '+px(o.target)+'</span></div>';
+      });
     }
+    var recent=acct.closed_orders.slice(-3).reverse();
+    if(recent.length){
+      html+='<span class="plab2">Recently closed</span>';
+      recent.forEach(function(o){
+        var why={SL:"stop loss",TP:"take profit",TIME:"time limit"}[o.exit_reason]||o.exit_reason;
+        html+='<div class="porder"><span class="ot"><span class="ptype '+(o.direction==="LONG"?"buy\">BUY":"sell\">SELL")+'</span> '+o.asset+'</span>'+
+          '<span class="op '+cls(o.pnl_usd)+'">'+money(o.pnl_usd,true)+'</span>'+
+          '<span class="od">'+px(o.entry)+' → '+px(o.exit)+' · '+why+'</span></div>';
+      });
+    }
+    if(!html && status==="ARMED"){
+      html='<span class="od" style="font-size:12.5px;color:var(--dim)">No orders yet. The bot opens one only when a setup scores 65 or more and fits what this account trades.</span>';
+    }
+    $("paperOrders").innerHTML=html;
+    $("paperNote").textContent=status==="STOPPED"&&state.stop_reason
+      ? "Stopped: "+state.stop_reason
+      : "Pretend money only. Nothing reaches a real broker.";
   }
 
   async function load(){
-    try{
-      var r=await fetch("/api/paper",{cache:"no-store"});
-      state = r.ok ? await r.json() : null;
-    }catch(e){ state=null; }
+    try{ var r=await fetch("/api/paper",{cache:"no-store"}); state=r.ok?await r.json():null; }
+    catch(e){ state=null; }
+    var acct=state&&state.account, syms={};
+    if(acct) acct.open_orders.forEach(function(o){ syms[o.asset]=1; });
+    await Promise.all(Object.keys(syms).map(async function(a){
+      try{ var r=await fetch("/api/candles?asset="+a+"&tf=5m",{cache:"no-store"});
+        var j=await r.json(), c=j.candles||[]; if(c.length) last[a]=c[c.length-1].close; }
+      catch(e){ /* keep the last known price */ }
+    }));
     render();
   }
-
-  elBtn.addEventListener("click", async function(){
-    if(busy||!state) return;
-    var action = state.status==="ARMED" ? "disarm" : "arm";
-    if(action==="arm" && !confirm(
-        "Start a paper forward test?\n\nSimulated orders only. It records the "+
-        "engine's signals for up to "+((state.limits||{}).max_trades||60)+
-        " trades and stops itself on drawdown, time, or a stale feed.")) return;
-    busy=true; elBtn.disabled=true; elNote.classList.remove("err");
-    elNote.textContent="sending…";
-    try{
-      var r=await fetch("/api/paper-control",{method:"POST",cache:"no-store",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({action:action})});
-      var j=await r.json();
-      if(!r.ok){
-        elNote.classList.add("err");
-        elNote.textContent=(j.error||"failed")+(j.detail?" — "+j.detail:"");
-      }else{
-        elNote.textContent=j.detail||"requested";
-        if(state) state.pending_request=action;
-      }
-    }catch(e){
-      elNote.classList.add("err"); elNote.textContent="request failed: "+e;
-    }
-    busy=false; render();
-  });
-
   load();
-  setInterval(load, 60000);
+  setInterval(load,30000);
 })();
 </script>
 </body>
