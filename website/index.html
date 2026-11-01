@@ -330,7 +330,7 @@
 </div>
 <div class="paper hidden" id="paperPanel">
   <div class="ptop2">
-    <span class="ptitle">Demo account · pretend money</span>
+    <span class="ptitle" id="pTitle">Demo account · pretend money</span>
     <span class="pstat off" id="paperStatus">—</span>
   </div>
   <div class="pbig">
@@ -1102,7 +1102,7 @@ pollTickers();setInterval(pollTickers,2000);
    same fee-inclusive formula, as the terminal. */
 (function(){
   var $=function(id){return document.getElementById(id);};
-  var panel=$("paperPanel"), state=null, last={};
+  var panel=$("paperPanel"), state=null, last={}, mine=false;
 
   function money(v,sign){
     if(v==null||!isFinite(v)) return "—";
@@ -1133,7 +1133,9 @@ pollTickers();setInterval(pollTickers,2000);
     if(!acct){
       $("pEq").textContent="—"; $("pPnl").textContent="—"; $("pChips").innerHTML="";
       $("paperRow").innerHTML=""; $("paperOrders").innerHTML="";
-      $("paperNote").textContent="No dollar demo account yet. Open the terminal to start one with pretend money.";
+      $("paperNote").innerHTML=mine
+        ? "Your account isn't trading yet. Open the terminal to deposit demo money and start."
+        : 'No dollar demo account yet. <a href="/login.html" style="color:var(--blu)">Log in</a> to get your own, or open the terminal.';
       return;
     }
     var fl=0; acct.open_orders.forEach(function(o){ var f=floating(o,acct); if(f!=null) fl+=f; });
@@ -1189,8 +1191,18 @@ pollTickers();setInterval(pollTickers,2000);
   }
 
   async function load(){
-    try{ var r=await fetch("/api/paper",{cache:"no-store"}); state=r.ok?await r.json():null; }
-    catch(e){ state=null; }
+    // Logged in: your own account. Otherwise (or if accounts aren't set up
+    // on this deployment) the shared demo, as before.
+    mine=false;
+    try{ var ra=await fetch("/api/account",{cache:"no-store"});
+      if(ra.ok){ state=(await ra.json()).paper; mine=true; } }
+    catch(e){ /* fall back to the shared demo */ }
+    if(!mine){
+      try{ var r=await fetch("/api/paper",{cache:"no-store"}); state=r.ok?await r.json():null; }
+      catch(e){ state=null; }
+    }
+    $("pTitle").textContent=mine?"Your account · pretend money":"Shared demo · pretend money";
+    $("paperGo").href=mine?"/terminal.html#src=me&tab=trade":"/terminal.html#src=live&tab=trade";
     var acct=state&&state.account, syms={};
     if(acct) acct.open_orders.forEach(function(o){ syms[o.asset]=1; });
     await Promise.all(Object.keys(syms).map(async function(a){

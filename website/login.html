@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Log in · Signal Engine v2</title>
+<style>
+/* Same palette as terminal.html, so logging in doesn't feel like leaving. */
+:root{
+  --bg:#0b0d12; --panel:#11141b; --card2:#1b1f2b; --bd:#262b38;
+  --tx:#e6e9f0; --dim:#8a90a2; --faint:#5d6375;
+  --grn:#22c55e; --red:#ef4444; --blu:#3b82f6; --amb:#f59e0b;
+  --amb-bg:rgba(245,158,11,.14);
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text",Roboto,Helvetica,Arial,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0}
+body{background:var(--bg); color:var(--tx); font:14px/1.5 var(--sans); min-height:100vh;
+  display:grid; place-items:center;
+  padding:max(16px, env(safe-area-inset-top,0px)) max(16px, env(safe-area-inset-right,0px))
+          max(16px, env(safe-area-inset-bottom,0px)) max(16px, env(safe-area-inset-left,0px))}
+button,input{font:inherit; color:inherit}
+:focus-visible{outline:2px solid var(--blu); outline-offset:2px}
+.card{width:100%; max-width:380px; background:var(--panel); border:1px solid var(--bd); border-radius:12px; padding:22px; display:flex; flex-direction:column; gap:14px}
+h1{margin:0; font-size:18px}
+.sub{margin:-8px 0 0; color:var(--dim); font-size:13px}
+.seg{display:grid; grid-template-columns:1fr 1fr; background:var(--card2); border:1px solid var(--bd); border-radius:8px; padding:2px}
+.seg button{background:none; border:0; padding:7px 10px; border-radius:6px; color:var(--dim); font-weight:650; font-size:13px; cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--blu); color:#fff}
+form{display:flex; flex-direction:column; gap:12px}
+.field{display:flex; flex-direction:column; gap:5px}
+.field label{font-size:12px; color:var(--dim)}
+.field input{background:var(--card2); border:1px solid var(--bd); border-radius:8px; padding:9px 11px}
+.btn{border:1px solid var(--blu); background:var(--blu); color:#fff; border-radius:8px; padding:10px 12px; font-weight:700; cursor:pointer}
+.btn.ghost{background:var(--card2); border-color:var(--bd); color:var(--tx)}
+.btn:disabled{opacity:.5; cursor:not-allowed}
+.msg{min-height:1.2em; font-size:13px; color:var(--dim)}
+.msg.err{color:#fca5a5}
+.note{margin:0; font-size:12.5px; color:var(--dim); background:var(--amb-bg); border:1px solid rgba(245,158,11,.35); border-radius:8px; padding:9px 11px}
+.back{font-size:13px; color:var(--dim); text-decoration:none}
+.back:hover{color:var(--tx)}
+.row{display:flex; gap:8px} .row .btn{flex:1}
+</style>
+</head>
+<body>
+<main class="card">
+  <div>
+    <h1>Signal Engine</h1>
+  </div>
+  <p class="sub">Your own demo trading account</p>
+
+  <section id="loggedin" hidden>
+    <p style="margin:0 0 12px">Logged in as <b id="who"></b>.</p>
+    <div class="row">
+      <a class="btn" id="go" href="/terminal.html#src=me" style="text-align:center; text-decoration:none">Open my account</a>
+      <button class="btn ghost" id="logout" type="button">Log out</button>
+    </div>
+  </section>
+
+  <section id="forms">
+    <div class="seg" role="group" aria-label="Log in or create an account">
+      <button type="button" id="m-login" aria-pressed="true">Log in</button>
+      <button type="button" id="m-register" aria-pressed="false">Create account</button>
+    </div>
+    <form id="f" style="margin-top:14px">
+      <div class="field">
+        <label for="u">Username</label>
+        <input id="u" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required minlength="3" maxlength="32">
+      </div>
+      <div class="field">
+        <label for="p">Password</label>
+        <input id="p" name="password" type="password" autocomplete="current-password" required minlength="8" maxlength="128">
+      </div>
+      <button class="btn" id="submit" type="submit">Log in</button>
+      <div class="msg" id="msg" role="status"></div>
+    </form>
+  </section>
+
+  <p class="note">Pretend money only. Deposits use a test card, payouts go to a demo bank account, and no order reaches a real broker.</p>
+  <a class="back" href="/">← Back to signals</a>
+</main>
+
+<script>
+(function () {
+  "use strict";
+  var $ = function (id) { return document.getElementById(id); };
+  var mode = "login";
+
+  // Only same-site paths, so a crafted ?next= can't send someone elsewhere
+  // after they log in.
+  function nextUrl() {
+    var n = new URLSearchParams(location.search).get("next") || "";
+    return /^\/(?!\/)/.test(n) ? n : "/terminal.html#src=me";
+  }
+  $("go").href = nextUrl();
+
+  function setMode(m) {
+    mode = m;
+    $("m-login").setAttribute("aria-pressed", String(m === "login"));
+    $("m-register").setAttribute("aria-pressed", String(m === "register"));
+    $("submit").textContent = m === "login" ? "Log in" : "Create account";
+    $("p").autocomplete = m === "login" ? "current-password" : "new-password";
+    $("msg").textContent = ""; $("msg").className = "msg";
+  }
+  $("m-login").addEventListener("click", function () { setMode("login"); });
+  $("m-register").addEventListener("click", function () { setMode("register"); });
+
+  async function post(body) {
+    var r = await fetch("/api/auth", { method: "POST", cache: "no-store",
+      headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    var j = await r.json().catch(function () { return {}; });
+    if (!r.ok) throw new Error(j.detail && r.status === 501 ? j.detail : (j.error || ("HTTP " + r.status)));
+    return j;
+  }
+
+  $("f").addEventListener("submit", async function (e) {
+    e.preventDefault();
+    var btn = $("submit"), m = $("msg");
+    btn.disabled = true; m.className = "msg"; m.textContent = mode === "login" ? "Logging in…" : "Creating account…";
+    try {
+      await post({ action: mode, username: $("u").value, password: $("p").value });
+      location.href = nextUrl();
+    } catch (err) {
+      m.className = "msg err"; m.textContent = err.message;
+      btn.disabled = false;
+    }
+  });
+
+  $("logout").addEventListener("click", async function () {
+    try { await post({ action: "logout" }); } catch (e) { /* the cookie is gone either way */ }
+    location.reload();
+  });
+
+  (async function boot() {
+    try {
+      var r = await fetch("/api/auth", { cache: "no-store" });
+      var j = await r.json();
+      if (j.user) {
+        $("who").textContent = j.user.username;
+        $("loggedin").hidden = false; $("forms").hidden = true;
+      }
+    } catch (e) { /* show the form */ }
+  })();
+})();
+</script>
+</body>
+</html>

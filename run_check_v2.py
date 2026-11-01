@@ -288,6 +288,14 @@ def paper_cycle(signals, frames_by_asset):
     except Exception as e:
         print(f"paper cycle failed: {e}", file=sys.stderr)
         traceback.print_exc()
+    # Each logged-in user's own account, after the shared one and under the
+    # same rule: a failure here is printed, never allowed to stop the engine.
+    try:
+        import accounts
+        accounts.user_cycle(signals, frames_by_asset)
+    except Exception as e:
+        print(f"user accounts cycle failed: {e}", file=sys.stderr)
+        traceback.print_exc()
 
 
 def main():

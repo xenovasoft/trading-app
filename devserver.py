@@ -25,12 +25,14 @@ Two differences from production, both deliberate:
 """
 
 import argparse
+import http.cookies
 import json
 import os
 import random
 import urllib.parse
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
+import accounts
 import papertrader
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -55,6 +57,9 @@ def _credentials():
 
 SUPA_URL, SUPA_KEY = _credentials()
 LIVE = False
+# User accounts live in accounts.local.json here, Supabase in production.
+# Start and Stop act at once locally, for the same reason paper-control does.
+STORE = None
 
 
 def seed_demo():
@@ -152,14 +157,121 @@ class Handler(SimpleHTTPRequestHandler):
         super().__init__(*a, directory=WEB, **k)
 
     # -- helpers ------------------------------------------------------------
-    def _json(self, obj, code=200):
+    def _json(self, obj, code=200, headers=None):
         body = json.dumps(obj, default=str).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
+        for k, v in (headers or {}).items():
+            self.send_header(k, v)
         self.end_headers()
         self.wfile.write(body)
+
+    def _body(self):
+        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            return json.loads(self.rfile.read(length) or b"{}")
+        except json.JSONDecodeError:
+            return None
+
+    def _user(self):
+        try:
+            c = http.cookies.SimpleCookie(self.headers.get("Cookie") or "")
+        except http.cookies.CookieError:
+            return None
+        tok = c[accounts.COOKIE].value if accounts.COOKIE in c else None
+        return accounts.read_session(STORE.secret, tok)
+
+    def _session_cookie(self, token, max_age):
+        # No Secure flag: this server is plain http on localhost. The Vercel
+        # endpoint sets it, since production is https.
+        return {"Set-Cookie": f"{accounts.COOKIE}={token}; Path=/; HttpOnly; "
+                              f"SameSite=Lax; Max-Age={max_age}"}
+
+    def _account(self, user):
+        state, req = STORE.get(user["id"])
+        return {"user": user,
+                "wallet": accounts.wallet_view(STORE.txs(user["id"]), state, req),
+                "paper": accounts.user_snapshot(state, req)}
+
+    def _auth_post(self, body):
+        action = body.get("action")
+        if action == "logout":
+            return self._json({"ok": True}, headers=self._session_cookie("", 0))
+        if action == "register":
+            u, err = STORE.add_user(body.get("username"), body.get("password"))
+            if err:
+                return self._json({"error": err}, 409 if "taken" in err else 400)
+        elif action == "login":
+            name, _ = accounts.check_username(body.get("username"))
+            u = STORE.find_user(name)
+            if not u or not accounts.verify_password(body.get("password") or "",
+                                                     u["password_hash"]):
+                return self._json({"error": "wrong username or password"}, 401)
+        else:
+            return self._json({"error": "action must be login, register or logout"}, 400)
+        user = {"id": u["id"], "username": u["username"]}
+        token = accounts.sign_session(STORE.secret, u["id"], u["username"])
+        return self._json({"ok": True, "user": user},
+                          headers=self._session_cookie(token, accounts.SESSION_DAYS * 86400))
+
+    def _account_post(self, user, body):
+        uid, action = user["id"], body.get("action")
+        state, req = STORE.get(uid)
+        bal = accounts.wallet_balance(STORE.txs(uid))
+
+        if action == "deposit":
+            amt, err = accounts.parse_amount(body.get("amount"), accounts.MAX_DEPOSIT, "deposit")
+            if err:
+                return self._json({"error": err}, 400)
+            method, code, err = accounts.check_card(body.get("card"))
+            if err:
+                return self._json({"error": err}, code)
+            STORE.add_tx(uid, "deposit", amt, method, "demo deposit")
+            return self._json({"ok": True, "detail": f"${amt:,.2f} added to your wallet"})
+
+        if action == "payout":
+            if bal < 1:
+                return self._json({"error": "your wallet is empty"}, 400)
+            amt, err = accounts.parse_amount(body.get("amount"), bal, "payout")
+            if err:
+                return self._json({"error": err}, 400)
+            STORE.add_tx(uid, "payout", -amt, "Demo bank account", "demo payout")
+            return self._json({"ok": True, "detail": f"${amt:,.2f} paid out to your demo bank account"})
+
+        if action == "start":
+            if state.get("status") == papertrader.ARMED:
+                return self._json({"error": "your account is already running -- stop it first"}, 409)
+            if bal < 1:
+                return self._json({"error": "your wallet is empty -- deposit first"}, 400)
+            amt, err = accounts.parse_amount(body.get("amount"), bal)
+            if err:
+                return self._json({"error": err}, 400)
+            try:
+                lev = float(body.get("leverage", 1))
+            except (TypeError, ValueError):
+                lev = 0
+            if not 1 <= lev <= 10:
+                return self._json({"error": "leverage must be between 1 and 10"}, 400)
+            STORE.add_tx(uid, "allocate", -amt, "Trading account", f"started at {lev:g}x")
+            STORE.put(uid, papertrader.new_session(
+                None, note=f"started by {user['username']}", balance=amt, max_leverage=lev))
+            return self._json({"ok": True, "detail": f"trading started with ${amt:,.2f} at {lev:g}x "
+                                                      "(immediate locally; in production it starts "
+                                                      "on the next engine cycle)"})
+
+        if action == "stop":
+            if state.get("status") != papertrader.ARMED:
+                return self._json({"error": "your account isn't running"}, 409)
+            st, amt = accounts.settle(accounts.stop(state, "stopped by you"))
+            if amt is not None:
+                STORE.add_tx(uid, "return", amt, "Trading account", "stopped by you",
+                             accounts.settle_ref(uid, state))
+            STORE.put(uid, st)
+            return self._json({"ok": True, "detail": f"trading stopped; ${amt or 0:,.2f} returned to your wallet"})
+
+        return self._json({"error": "action must be deposit, payout, start or stop"}, 400)
 
     def _supa(self, path, params):
         if not (SUPA_URL and SUPA_KEY):
@@ -190,6 +302,15 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(snap)
             return self._json(papertrader.snapshot(st))
 
+        if u.path == "/api/auth":
+            return self._json({"user": self._user()})
+
+        if u.path == "/api/account":
+            user = self._user()
+            if not user:
+                return self._json({"error": "log in first"}, 401)
+            return self._json(self._account(user))
+
         if u.path == "/api/signals":
             return self._json(self._supa("signals_v2", {"select": "*"}) or [])
 
@@ -218,6 +339,16 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         u = urllib.parse.urlparse(self.path)
+        if u.path in ("/api/auth", "/api/account"):
+            body = self._body()
+            if body is None:
+                return self._json({"error": "body must be JSON"}, 400)
+            if u.path == "/api/auth":
+                return self._auth_post(body)
+            user = self._user()
+            if not user:
+                return self._json({"error": "log in first"}, 401)
+            return self._account_post(user, body)
         if u.path != "/api/paper-control":
             return self._json({"error": "not implemented locally"}, 404)
         if LIVE:
@@ -268,8 +399,12 @@ def main():
     ap.add_argument("--demo", action="store_true",
                     help="seed a paper session from bt_trades.csv to look at")
     a = ap.parse_args()
-    global LIVE
+    global LIVE, STORE
     LIVE = a.live
+    STORE = accounts.LocalStore()
+    made = accounts.seed_local(STORE, quiet=True)
+    if made:
+        print(f"created local test user(s) from test_users.local.json: {', '.join(made)}")
 
     if a.demo:
         papertrader.save_state(seed_demo())

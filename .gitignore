@@ -31,3 +31,9 @@ paper_state.json.tmp
 # Supabase CLI link state: machine-local, and pooler-url holds a DB
 # connection string. Never commit.
 supabase/.temp/
+
+# User accounts, local dev server only: password hashes, the session-signing
+# secret, and the generated test logins. Production keeps these in Supabase.
+accounts.local.json
+accounts.local.json.tmp
+test_users.local.json

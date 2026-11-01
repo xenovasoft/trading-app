@@ -796,23 +796,29 @@ def apply_remote_intent(state):
     calling it here would answer a Stop request by throwing away the very
     session being stopped, losing every trade it had recorded.
     """
-    req = pull_request()
+    return apply_intent(state, pull_request())
+
+
+def apply_intent(state, req, source="website"):
+    """Act on one intent string already read from the store. Split out of
+    apply_remote_intent() so per-user accounts (accounts.py), which read
+    their intents from their own rows, go through the same rules."""
     # "arm" or "arm:<balance>" or "arm:<balance>:<leverage>". The amount rides
     # in the intent string because the website and the engine share no
     # process -- this column is the only channel between them.
     if req and req.split(":", 1)[0] == "arm":
         bal, lev = parse_arm(req)
-        return (new_session(state.get("limits"), note="armed from website",
+        return (new_session(state.get("limits"), note=f"armed from {source}",
                             balance=bal, max_leverage=lev,
                             profiles=parse_profiles(req)),
-                f"ARMED by website request with ${bal:,.2f} at {lev:g}x")
+                f"ARMED by {source} request with ${bal:,.2f} at {lev:g}x")
     if req == "disarm":
         st = dict(state)
         if st.get("status") != STOPPED:
             st["status"] = STOPPED
             st["stopped_at"] = _iso(_now())
-            st["stop_reason"] = "stopped from website"
-        return st, "STOPPED by website request"
+            st["stop_reason"] = f"stopped from {source}"
+        return st, f"STOPPED by {source} request"
     return state, None
 
 

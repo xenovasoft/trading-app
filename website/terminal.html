@@ -103,6 +103,17 @@ button{cursor:pointer}
 .testnote b{color:var(--amb)}
 .msg.err{color:#fca5a5}
 .hint{font-size:11.5px; color:var(--faint); line-height:1.45}
+.hint a,.testnote a{color:var(--blu)}
+
+/* ---- logged-in user + wallet ---- */
+.who{display:flex; align-items:center; gap:8px; font-size:12.5px; color:var(--dim)}
+.who b{color:var(--tx); font-weight:650}
+.who a,.who button{background:var(--card2); border:1px solid var(--bd); border-radius:7px; padding:5px 10px; font-weight:650; font-size:12px; color:var(--tx); text-decoration:none}
+.who a:hover,.who button:hover{border-color:var(--dim)}
+.fixed{background:var(--card2); border:1px solid var(--bd); border-radius:7px; padding:7px 9px; color:var(--dim)}
+.wtx li{grid-template-columns:150px minmax(0,1fr) auto}
+.wtx .amt{font-family:var(--mono); font-variant-numeric:tabular-nums; font-weight:650; text-align:right; white-space:nowrap}
+@media (max-width:520px){ .wtx li{grid-template-columns:minmax(0,1fr) auto} .wtx li time{grid-column:1 / -1} }
 
 /* ---- toolbox ---- */
 .tbox{background:var(--panel); border:1px solid var(--bd); border-radius:10px; overflow:hidden}
@@ -170,6 +181,7 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
       <span class="px" id="px">—</span>
       <span class="ch" id="ch"></span>
     </div>
+    <div class="who" id="who"></div>
   </div>
 
   <!-- account strip -->
@@ -202,9 +214,10 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
         </div>
         <div class="field">
           <label for="src">Viewing</label>
-          <select id="src"><option value="live">Live demo (production)</option></select>
+          <select id="src"><option value="live">Shared demo (everyone)</option></select>
         </div>
         <p class="testnote" id="testnote" hidden></p>
+        <p class="hint" id="loginhint" hidden><a href="/login.html?next=%2Fterminal.html%23src%3Dme">Log in</a> to get your own account and wallet. Nobody else can start, stop or reset it.</p>
         <dl class="kv">
           <dt>Started</dt><dd id="k-start">—</dd>
           <dt>Starting balance</dt><dd id="k-sbal">—</dd>
@@ -219,10 +232,10 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
       </div>
 
       <form class="box" id="newacct" autocomplete="off">
-        <h3>Open demo account</h3>
+        <h3 id="newtitle">Open demo account</h3>
         <div class="row2">
           <div class="field">
-            <label for="amt">Dummy dollars</label>
+            <label for="amt" id="amtlabel">Dummy dollars</label>
             <input id="amt" type="number" min="1" max="1000000000" step="any" value="1000" inputmode="decimal">
           </div>
           <div class="field">
@@ -235,11 +248,52 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
             </select>
           </div>
         </div>
+        <div class="msg" id="walletline" hidden></div>
         <button class="btn go" id="startbtn" type="submit">Start demo account</button>
         <button class="btn danger" id="stopbtn" type="button" hidden>Stop account</button>
         <div class="msg" id="ctlmsg" role="status"></div>
-        <p class="hint">Pretend money only. The bot places and closes every order itself, risking 1% of the balance per order. 1× means no borrowing: total open orders can never exceed the balance. Nothing reaches a real broker.</p>
+        <p class="hint" id="newhint">Pretend money only. The bot places and closes every order itself, risking 1% of the balance per order. 1× means no borrowing: total open orders can never exceed the balance. Nothing reaches a real broker.</p>
       </form>
+
+      <div class="box" id="walletbox" hidden>
+        <div style="display:flex; justify-content:space-between; align-items:center">
+          <h3>Wallet</h3><span class="pill off">Demo money</span>
+        </div>
+        <dl class="kv">
+          <dt>Available</dt><dd id="w-bal">—</dd>
+          <dt>In trading</dt><dd id="w-trade">—</dd>
+        </dl>
+        <div class="row2">
+          <button class="btn" id="depbtn" type="button" aria-expanded="false" aria-controls="depform">Deposit</button>
+          <button class="btn" id="paybtn" type="button" aria-expanded="false" aria-controls="payform">Payout</button>
+        </div>
+        <form id="depform" hidden autocomplete="off" style="display:flex; flex-direction:column; gap:10px">
+          <div class="field">
+            <label for="dep-amt">Amount</label>
+            <input id="dep-amt" type="number" min="1" max="1000000" step="any" value="1000" inputmode="decimal">
+          </div>
+          <div class="field">
+            <label for="dep-card">Card number</label>
+            <input id="dep-card" inputmode="numeric" placeholder="4242 4242 4242 4242" maxlength="23" autocomplete="off">
+          </div>
+          <div class="row2">
+            <div class="field"><label for="dep-exp">Expiry</label><input id="dep-exp" placeholder="MM/YY" maxlength="7" autocomplete="off"></div>
+            <div class="field"><label for="dep-cvc">CVC</label><input id="dep-cvc" placeholder="123" inputmode="numeric" maxlength="4" autocomplete="off"></div>
+          </div>
+          <button class="btn go" type="submit">Deposit</button>
+          <p class="hint">Demo only: use the test card 4242 4242 4242 4242 with any future date and any CVC. 4000 0000 0000 0002 shows a declined card. Never enter a real card.</p>
+        </form>
+        <form id="payform" hidden autocomplete="off" style="display:flex; flex-direction:column; gap:10px">
+          <div class="field">
+            <label for="pay-amt">Amount</label>
+            <input id="pay-amt" type="number" min="1" step="any" inputmode="decimal">
+          </div>
+          <div class="field"><label>To</label><div class="fixed">Demo bank account</div></div>
+          <button class="btn go" type="submit">Request payout</button>
+          <p class="hint">Demo only: nothing is sent to a real bank. Money in a running trading account comes back to the wallet when you stop it.</p>
+        </form>
+        <div class="msg" id="walletmsg" role="status"></div>
+      </div>
     </aside>
   </div>
 
@@ -250,11 +304,13 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
       <button type="button" role="tab" id="t-hist" aria-selected="false" aria-controls="p-hist">History <span class="cnt" id="c-hist">0</span></button>
       <button type="button" role="tab" id="t-eq" aria-selected="false" aria-controls="p-eq">Balance</button>
       <button type="button" role="tab" id="t-jr" aria-selected="false" aria-controls="p-jr">Journal</button>
+      <button type="button" role="tab" id="t-wal" aria-selected="false" aria-controls="p-wal">Wallet <span class="cnt" id="c-wal">0</span></button>
     </div>
     <div class="pane" role="tabpanel" id="p-trade" aria-labelledby="t-trade"></div>
     <div class="pane" role="tabpanel" id="p-hist" aria-labelledby="t-hist" hidden></div>
     <div role="tabpanel" id="p-eq" aria-labelledby="t-eq" hidden><div id="eqchart"></div></div>
     <div class="pane" role="tabpanel" id="p-jr" aria-labelledby="t-jr" hidden></div>
+    <div class="pane" role="tabpanel" id="p-wal" aria-labelledby="t-wal" hidden></div>
   </div>
 
   <div class="status" id="status">
@@ -278,8 +334,11 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
 
   var state = { sym: "XAUUSD", tf: "15m", candles: [], paper: null,
                 last: {}, prevClose: null, chartAt: 0, priceLines: [],
-                source: "live", tests: [] };
-  function isTest() { return state.source !== "live"; }
+                source: "live", tests: [], user: null, wallet: null };
+  // "me" is the logged-in user's own account (/api/account); "live" the
+  // shared one everybody sees; anything else a static test history.
+  function isMine() { return state.source === "me"; }
+  function isTest() { return state.source !== "live" && !isMine(); }
 
   /* ------------------------------------------------------------ helpers */
   function $(id) { return document.getElementById(id); }
@@ -326,8 +385,16 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
   async function getJSON(url, opts) {
     var r = await fetch(url, Object.assign({ cache: "no-store" }, opts || {}));
     var j = await r.json().catch(function () { return {}; });
-    if (!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+    if (!r.ok) {
+      var err = new Error(j.error || ("HTTP " + r.status));
+      err.status = r.status;
+      throw err;
+    }
     return j;
+  }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]; });
   }
 
   /* -------------------------------------------------------------- chart */
@@ -458,13 +525,78 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
   /* -------------------------------------------------------------- paper */
   async function loadPaper() {
     try {
-      state.paper = isTest()
-        ? await getJSON("/data/tests/" + encodeURIComponent(state.source) + ".json")
-        : await getJSON("/api/paper");
+      if (isMine()) {
+        var j = await getJSON("/api/account");
+        state.paper = j.paper; state.wallet = j.wallet;
+      } else {
+        state.paper = isTest()
+          ? await getJSON("/data/tests/" + encodeURIComponent(state.source) + ".json")
+          : await getJSON("/api/paper");
+      }
     }
-    catch (e) { state.paper = state.paper || null; }
+    catch (e) {
+      // The session expired or was logged out in another tab.
+      if (e.status === 401 && isMine()) { loggedOut(); return loadPaper(); }
+      state.paper = state.paper || null;
+    }
     await refreshOtherPrices();
     render();
+  }
+
+  /* --------------------------------------------------------- user/login */
+  async function loadUser() {
+    try { state.user = (await getJSON("/api/auth")).user || null; }
+    catch (e) { state.user = null; }   // accounts not configured: logged out
+    var opt = $("src").querySelector('option[value="me"]');
+    if (state.user && !opt) {
+      opt = document.createElement("option"); opt.value = "me";
+      $("src").insertBefore(opt, $("src").firstChild);
+    }
+    if (state.user) opt.textContent = "My account (" + state.user.username + ")";
+    if (!state.user && opt) opt.remove();
+    renderWho();
+  }
+  function loggedOut() {
+    state.user = null; state.wallet = null;
+    var opt = $("src").querySelector('option[value="me"]'); if (opt) opt.remove();
+    if (isMine()) { state.source = "live"; $("src").value = "live"; saveView(); }
+    renderWho();
+  }
+  function renderWho() {
+    var el = $("who");
+    if (!state.user) {
+      el.innerHTML = '<a href="/login.html?next=' + encodeURIComponent("/terminal.html#src=me") + '">Log in</a>';
+      return;
+    }
+    el.innerHTML = '<span><b>' + esc(state.user.username) + '</b></span><button type="button" id="logout">Log out</button>';
+    $("logout").addEventListener("click", async function () {
+      try { await getJSON("/api/auth", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "logout" }) }); } catch (e) { /* cookie is cleared either way */ }
+      loggedOut();
+      await loadPaper();
+    });
+  }
+
+  function renderWallet() {
+    var w = state.wallet, mine = isMine();
+    $("walletbox").hidden = !mine;
+    if (!mine) {
+      $("c-wal").textContent = "0";
+      $("p-wal").innerHTML = '<div class="empty">' + (state.user
+        ? "Choose <b>My account</b> under Viewing to see your wallet."
+        : '<a href="/login.html?next=' + encodeURIComponent("/terminal.html#src=me") + '" style="color:var(--blu)">Log in</a> to get a demo wallet.') + "</div>";
+      return;
+    }
+    $("w-bal").textContent = w ? money(w.balance) : "—";
+    $("w-trade").textContent = w ? money(w.in_trading) : "—";
+    if (w) $("pay-amt").placeholder = "up to " + money(w.balance);
+    var txs = (w && w.transactions) || [];
+    var label = { deposit: "Deposit", payout: "Payout", allocate: "Moved to trading", "return": "Back from trading" };
+    $("c-wal").textContent = String(txs.length);
+    $("p-wal").innerHTML = txs.length ? '<ul class="journal wtx">' + txs.map(function (t) {
+      return "<li><time>" + fmtTime(t.created_at) + "</time><span><b>" + (label[t.kind] || esc(t.kind)) + "</b> <span class='mut'>" +
+        esc(t.method || "") + (t.note ? " · " + esc(t.note) : "") + "</span></span><span class='amt " + cls(t.amount) + "'>" + money(t.amount, true) + "</span></li>";
+    }).join("") + "</ul>" : '<div class="empty">No wallet activity yet. Deposit with the demo card to get started.</div>';
   }
 
   function render() {
@@ -473,10 +605,25 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
     var pill = $("st");
     pill.textContent = st;
     pill.className = "pill " + (p.pending_request ? "pend" : st === "ARMED" ? "on" : st === "STOPPED" ? "stop" : "off");
-    var running = p.status === "ARMED";
+    var running = p.status === "ARMED", mine = isMine(), w = state.wallet;
+    // A start the engine hasn't picked up yet can still be cancelled, which
+    // refunds the wallet at once.
+    var pendStart = mine && String(p.pending_request || "").indexOf("arm") === 0;
     $("newacct").hidden = isTest();
-    $("startbtn").hidden = running && !!acct;
-    $("stopbtn").hidden = !running;
+    $("startbtn").hidden = (running && !!acct) || pendStart;
+    $("stopbtn").hidden = !running && !pendStart;
+    $("stopbtn").textContent = pendStart && !running ? "Cancel start" : "Stop account";
+    $("newtitle").textContent = mine ? "Start trading" : "Open demo account";
+    if (!$("startbtn").classList.contains("confirm") && !$("startbtn").disabled) $("startbtn").textContent = startLabel();
+    $("amtlabel").textContent = mine ? "From wallet" : "Dummy dollars";
+    $("walletline").hidden = !mine || !w;
+    if (mine && w) $("walletline").textContent = w.balance >= 1
+      ? "Wallet: " + money(w.balance) + " available" : "Your wallet is empty. Deposit below first.";
+    $("newhint").textContent = mine
+      ? "Pretend money only. The bot places and closes every order itself, risking 1% of the balance per order. Stopping moves the account's balance back to your wallet."
+      : "Pretend money only. The bot places and closes every order itself, risking 1% of the balance per order. 1× means no borrowing: total open orders can never exceed the balance. Nothing reaches a real broker.";
+    $("loginhint").hidden = !!state.user || isTest();
+    renderWallet();
     var tn = $("testnote");
     if (isTest() && p.test) {
       var w = p.test.window || [];
@@ -486,7 +633,8 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
         " At 1× these orders are capped at the balance, so dollar results are much smaller than the R results.";
       tn.hidden = false;
     } else { tn.hidden = true; }
-    $("stopnote").textContent = p.stop_reason ? ("Stopped: " + p.stop_reason) : "";
+    $("stopnote").textContent = p.stop_reason ? ("Stopped: " + p.stop_reason +
+      (mine && p.settled_usd != null ? ". " + money(p.settled_usd) + " went back to your wallet." : "")) : "";
     state.lastStep = isTest() ? null : toUnix(p.last_step);
     $("s-step").textContent = isTest()
       ? ("test history, replayed from a backtest")
@@ -495,9 +643,14 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
     if (!acct) {
       ["a-bal","a-eq","a-fl","a-mg","a-fm","a-pl","a-ret","k-start","k-sbal","k-risk","k-lev","k-scope","k-win","k-fee","k-dd"]
         .forEach(function (id) { $(id).textContent = "—"; });
-      var why = p.never_run || !p.status || p.status === "DISARMED"
+      var why = pendStart ? "Starting on the next engine cycle."
+        : mine ? "Your account isn't trading yet."
+        : p.never_run || !p.status || p.status === "DISARMED"
         ? "No demo account yet." : "This session was started before dollar accounts existed, so it only tracks R.";
-      $("p-trade").innerHTML = '<div class="empty"><b>' + why + '</b><br>Open a demo account on the right to watch the bot place and close orders in dollars.</div>';
+      var how = pendStart ? "The engine checks the market every 15 minutes; your orders will appear here."
+        : mine ? "Deposit to your wallet, then start trading on the right."
+        : "Open a demo account on the right to watch the bot place and close orders in dollars.";
+      $("p-trade").innerHTML = '<div class="empty"><b>' + why + '</b><br>' + how + '</div>';
       $("p-hist").innerHTML = '<div class="empty">No closed orders yet.</div>';
       $("p-jr").innerHTML = '<div class="empty">No activity yet.</div>';
       $("c-trade").textContent = "0"; $("c-hist").textContent = "0";
@@ -641,7 +794,7 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
   // for a test history looks exactly like the history being deleted. The
   // view now lives in the URL (survives refresh, and a shared link opens the
   // same screen) with localStorage as the fallback for a bare /terminal.html.
-  var VIEW_KEY = "paperTerminalView", TABS = ["trade", "hist", "eq", "jr"];
+  var VIEW_KEY = "paperTerminalView", TABS = ["trade", "hist", "eq", "jr", "wal"];
   function currentTab() {
     var t = document.querySelector('.tabs button[aria-selected="true"]');
     return t ? t.id.slice(2) : "trade";
@@ -675,6 +828,7 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
     saveView();
   });
 
+  function startLabel() { return isMine() ? "Start trading" : "Start demo account"; }
   // Two-step start, built into the page: the button asks once, then acts.
   var armTimer = null;
   $("newacct").addEventListener("submit", async function (e) {
@@ -684,25 +838,30 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
     if (!btn.classList.contains("confirm")) {
       btn.classList.add("confirm");
       btn.textContent = "Confirm: start with " + money(amt) + " at " + lev + "×";
-      $("ctlmsg").className = "msg"; $("ctlmsg").textContent = "This replaces the current paper account.";
+      $("ctlmsg").className = "msg";
+      $("ctlmsg").textContent = isMine() ? "This moves " + money(amt) + " from your wallet into trading."
+                                         : "This replaces the current paper account.";
       clearTimeout(armTimer);
-      armTimer = setTimeout(function () { btn.classList.remove("confirm"); btn.textContent = "Start demo account"; $("ctlmsg").textContent = ""; }, 6000);
+      armTimer = setTimeout(function () { btn.classList.remove("confirm"); btn.textContent = startLabel(); $("ctlmsg").textContent = ""; }, 6000);
       return;
     }
     clearTimeout(armTimer);
     btn.classList.remove("confirm"); btn.disabled = true; btn.textContent = "Starting…";
-    await control({ action: "arm", balance: amt, leverage: lev });
-    btn.disabled = false; btn.textContent = "Start demo account";
+    await control(isMine() ? { action: "start", amount: amt, leverage: lev }
+                           : { action: "arm", balance: amt, leverage: lev });
+    btn.disabled = false; btn.textContent = startLabel();
   });
   $("stopbtn").addEventListener("click", async function () {
     var b = this; b.disabled = true;
-    await control({ action: "disarm" });
+    await control({ action: isMine() ? "stop" : "disarm" });
     b.disabled = false;
   });
+  // The user's own account goes through /api/account; the shared one keeps
+  // its original endpoint.
   async function control(body) {
     var m = $("ctlmsg"); m.className = "msg";
     try {
-      var j = await getJSON("/api/paper-control", { method: "POST",
+      var j = await getJSON(isMine() ? "/api/account" : "/api/paper-control", { method: "POST",
         headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       m.textContent = j.detail || "Done.";
       await loadPaper();
@@ -710,6 +869,50 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
       m.className = "msg err"; m.textContent = e.message;
     }
   }
+
+  /* ------------------------------------------------------------- wallet */
+  function walletMsg(text, isErr) {
+    var m = $("walletmsg"); m.className = "msg" + (isErr ? " err" : ""); m.textContent = text;
+  }
+  function toggleForm(show, hide, showBtn, hideBtn) {
+    var open = $(show).hidden;
+    $(show).hidden = !open; $(hide).hidden = true;
+    $(showBtn).setAttribute("aria-expanded", String(open)); $(hideBtn).setAttribute("aria-expanded", "false");
+    walletMsg("");
+    if (open) $(show).querySelector("input").focus();
+  }
+  $("depbtn").addEventListener("click", function () { toggleForm("depform", "payform", "depbtn", "paybtn"); });
+  $("paybtn").addEventListener("click", function () { toggleForm("payform", "depform", "paybtn", "depbtn"); });
+  async function walletAction(body, form) {
+    var btn = form.querySelector('button[type="submit"]'); btn.disabled = true;
+    try {
+      var j = await getJSON("/api/account", { method: "POST",
+        headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      form.reset(); form.hidden = true;
+      $("depbtn").setAttribute("aria-expanded", "false"); $("paybtn").setAttribute("aria-expanded", "false");
+      walletMsg(j.detail || "Done.");
+      await loadPaper();
+    } catch (e) {
+      walletMsg(e.message, true);
+    }
+    btn.disabled = false;
+  }
+  $("depform").addEventListener("submit", function (e) {
+    e.preventDefault();
+    // Expiry and CVC are checked here for a realistic form, and never sent:
+    // the server only needs to know it was the demo card.
+    var m = /^(\d{1,2})\s*\/\s*(\d{2})$/.exec($("dep-exp").value.trim());
+    var mon = m ? Number(m[1]) : 0;
+    if (!m || mon < 1 || mon > 12 || new Date(2000 + Number(m[2]), mon, 1) <= new Date()) {
+      return walletMsg("Enter a future expiry date as MM/YY.", true);
+    }
+    if (!/^\d{3,4}$/.test($("dep-cvc").value.trim())) return walletMsg("Enter the 3 or 4 digit CVC.", true);
+    walletAction({ action: "deposit", amount: Number($("dep-amt").value), card: $("dep-card").value }, this);
+  });
+  $("payform").addEventListener("submit", function (e) {
+    e.preventDefault();
+    walletAction({ action: "payout", amount: Number($("pay-amt").value) }, this);
+  });
 
   /* -------------------------------------------------------------- loops */
   function tick() {
@@ -762,9 +965,14 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
   // test id can be checked against what actually exists. A test that has
   // since been removed falls back to the live account instead of a blank page.
   (async function boot() {
+    await loadUser();
     await loadTests();
     var v = readView();
-    var known = v.src === "live" || state.tests.some(function (t) { return t.id === v.src; });
+    // Logged in and no view named in the URL: open on your own account, not
+    // whatever this browser last looked at before logging in.
+    if (state.user && !new URLSearchParams(location.hash.slice(1)).get("src")) v.src = "me";
+    var known = v.src === "live" || (v.src === "me" && !!state.user) ||
+                state.tests.some(function (t) { return t.id === v.src; });
     if (v.src && known) { state.source = v.src; $("src").value = v.src; }
     if (DP[v.sym] != null) state.sym = v.sym;
     if (TF_SEC[v.tf]) state.tf = v.tf;
