@@ -255,7 +255,8 @@ class Handler(SimpleHTTPRequestHandler):
         return self._json({"error": "action must be arm or disarm"}, 400)
 
     def log_message(self, fmt, *args):
-        if "/api/" in (args[0] if args else ""):
+        # log_error passes an HTTPStatus first, not the request line.
+        if "/api/" in (str(args[0]) if args else ""):
             super().log_message(fmt, *args)
 
 
