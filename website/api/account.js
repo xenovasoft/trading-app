@@ -2,7 +2,8 @@
  * The logged-in user's own trading account and demo wallet.
  *
  *   GET  /api/account -> { user, wallet: {balance, in_trading, transactions}, paper }
- *   POST /api/account { action: "deposit", amount, card }
+ *   POST /api/account { action: "deposit", amount, method: "instant" }   no card needed
+ *   POST /api/account { action: "deposit", amount, card }                 demo card checkout
  *   POST /api/account { action: "payout",  amount }
  *   POST /api/account { action: "start",   amount, leverage }
  *   POST /api/account { action: "stop" }
@@ -18,9 +19,9 @@
  */
 import {
   armAmount,
-  checkCard,
   config,
   db,
+  depositMethod,
   fail,
   MAX_DEPOSIT,
   money,
@@ -89,7 +90,7 @@ async function act(key, user, cur, b) {
   if (b.action === "deposit") {
     const [amt, err] = parseAmount(b.amount, MAX_DEPOSIT, "deposit");
     if (err) return [400, { error: err }];
-    const [method, code, cardErr] = checkCard(b.card);
+    const [method, code, cardErr] = depositMethod(b);
     if (cardErr) return [code, { error: cardErr }];
     await addTx(key, { user_id: uid, kind: "deposit", amount: amt, method, note: "demo deposit" });
     return [200, { ok: true, detail: `${money(amt)} added to your wallet` }];

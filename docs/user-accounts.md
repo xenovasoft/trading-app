@@ -4,8 +4,9 @@ Each user logs in and gets their own demo trading account and a demo wallet.
 Nobody else can start, stop or reset it. The account is stored on the
 server, so it looks the same on every page, tab and device, and in the iOS app.
 
-- **Wallet:** deposit with the test card `4242 4242 4242 4242`, or pay out
-  to a demo bank account. Both happen immediately.
+- **Wallet:** add demo money instantly with no payment details, or check
+  out with the test card `4242 4242 4242 4242`. Payouts go to a demo bank
+  account. All of these happen immediately.
 - **Start trading:** moves money from the wallet into a trading account.
   The engine opens it on its next cycle, within 15 minutes.
 - **Stop:** the engine closes the account on its next cycle and puts its

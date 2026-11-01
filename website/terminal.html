@@ -111,6 +111,12 @@ button{cursor:pointer}
 .who a,.who button{background:var(--card2); border:1px solid var(--bd); border-radius:7px; padding:5px 10px; font-weight:650; font-size:12px; color:var(--tx); text-decoration:none}
 .who a:hover,.who button:hover{border-color:var(--dim)}
 .fixed{background:var(--card2); border:1px solid var(--bd); border-radius:7px; padding:7px 9px; color:var(--dim)}
+.chips{display:flex; flex-wrap:wrap; gap:6px}
+.chip{background:var(--card2); border:1px solid var(--bd); border-radius:999px; padding:4px 11px; font-family:var(--mono); font-size:12px; font-weight:650}
+.chip:hover{border-color:var(--dim)}
+.paywith{border:0; margin:0; padding:0; display:flex; flex-wrap:wrap; gap:6px 16px; font-size:12.5px}
+.paywith legend{padding:0; margin-bottom:5px; font-size:11.5px; color:var(--dim)}
+.paywith label{display:inline-flex; align-items:center; gap:6px; cursor:pointer}
 .wtx li{grid-template-columns:150px minmax(0,1fr) auto}
 .wtx .amt{font-family:var(--mono); font-variant-numeric:tabular-nums; font-weight:650; text-align:right; white-space:nowrap}
 @media (max-width:520px){ .wtx li{grid-template-columns:minmax(0,1fr) auto} .wtx li time{grid-column:1 / -1} }
@@ -272,16 +278,28 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
             <label for="dep-amt">Amount</label>
             <input id="dep-amt" type="number" min="1" max="1000000" step="any" value="1000" inputmode="decimal">
           </div>
-          <div class="field">
-            <label for="dep-card">Card number</label>
-            <input id="dep-card" inputmode="numeric" placeholder="4242 4242 4242 4242" maxlength="23" autocomplete="off">
+          <div class="chips" role="group" aria-label="Quick amounts">
+            <button type="button" class="chip" data-amt="1000">$1,000</button>
+            <button type="button" class="chip" data-amt="5000">$5,000</button>
+            <button type="button" class="chip" data-amt="10000">$10,000</button>
           </div>
-          <div class="row2">
-            <div class="field"><label for="dep-exp">Expiry</label><input id="dep-exp" placeholder="MM/YY" maxlength="7" autocomplete="off"></div>
-            <div class="field"><label for="dep-cvc">CVC</label><input id="dep-cvc" placeholder="123" inputmode="numeric" maxlength="4" autocomplete="off"></div>
+          <fieldset class="paywith">
+            <legend>Pay with</legend>
+            <label><input type="radio" name="depm" value="instant" checked> Instant demo money</label>
+            <label><input type="radio" name="depm" value="card"> Test card</label>
+          </fieldset>
+          <div id="cardfields" hidden style="display:flex; flex-direction:column; gap:10px">
+            <div class="field">
+              <label for="dep-card">Card number</label>
+              <input id="dep-card" inputmode="numeric" placeholder="4242 4242 4242 4242" maxlength="23" autocomplete="off">
+            </div>
+            <div class="row2">
+              <div class="field"><label for="dep-exp">Expiry</label><input id="dep-exp" placeholder="MM/YY" maxlength="7" autocomplete="off"></div>
+              <div class="field"><label for="dep-cvc">CVC</label><input id="dep-cvc" placeholder="123" inputmode="numeric" maxlength="4" autocomplete="off"></div>
+            </div>
           </div>
-          <button class="btn go" type="submit">Deposit</button>
-          <p class="hint">Demo only: use the test card 4242 4242 4242 4242 with any future date and any CVC. 4000 0000 0000 0002 shows a declined card. Never enter a real card.</p>
+          <button class="btn go" type="submit" id="depsubmit">Add to wallet</button>
+          <p class="hint" id="dephint"></p>
         </form>
         <form id="payform" hidden autocomplete="off" style="display:flex; flex-direction:column; gap:10px">
           <div class="field">
@@ -596,7 +614,7 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
     $("p-wal").innerHTML = txs.length ? '<ul class="journal wtx">' + txs.map(function (t) {
       return "<li><time>" + fmtTime(t.created_at) + "</time><span><b>" + (label[t.kind] || esc(t.kind)) + "</b> <span class='mut'>" +
         esc(t.method || "") + (t.note ? " · " + esc(t.note) : "") + "</span></span><span class='amt " + cls(t.amount) + "'>" + money(t.amount, true) + "</span></li>";
-    }).join("") + "</ul>" : '<div class="empty">No wallet activity yet. Deposit with the demo card to get started.</div>';
+    }).join("") + "</ul>" : '<div class="empty">No wallet activity yet. Use <b>Deposit</b> to add demo money.</div>';
   }
 
   function render() {
@@ -897,8 +915,27 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
     }
     btn.disabled = false;
   }
+  function depMethod() { return $("depform").querySelector('input[name="depm"]:checked').value; }
+  function syncDepMethod() {
+    var card = depMethod() === "card";
+    $("cardfields").hidden = !card;
+    $("depsubmit").textContent = card ? "Pay with card" : "Add to wallet";
+    $("dephint").textContent = card
+      ? "Demo only: use the test card 4242 4242 4242 4242 with any future date and any CVC. 4000 0000 0000 0002 shows a declined card. Never enter a real card."
+      : "Demo only: adds pretend money straight to your wallet. No card or bank details needed.";
+  }
+  $("depform").addEventListener("change", function (e) { if (e.target.name === "depm") syncDepMethod(); });
+  // reset fires before the fields are reset, so re-sync on the next tick.
+  $("depform").addEventListener("reset", function () { setTimeout(syncDepMethod, 0); });
+  $("depform").querySelector(".chips").addEventListener("click", function (e) {
+    var c = e.target.closest(".chip"); if (c) $("dep-amt").value = c.getAttribute("data-amt");
+  });
+  syncDepMethod();
   $("depform").addEventListener("submit", function (e) {
     e.preventDefault();
+    if (depMethod() === "instant") {
+      return walletAction({ action: "deposit", amount: Number($("dep-amt").value), method: "instant" }, this);
+    }
     // Expiry and CVC are checked here for a realistic form, and never sent:
     // the server only needs to know it was the demo card.
     var m = /^(\d{1,2})\s*\/\s*(\d{2})$/.exec($("dep-exp").value.trim());

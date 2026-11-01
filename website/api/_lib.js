@@ -170,6 +170,13 @@ export function checkCard(card) {
   return [`Demo card •••• ${digits.slice(-4)}`, 200, null];
 }
 
+// method "instant" adds demo money with no payment details; anything else
+// goes through the card check.
+export function depositMethod(b) {
+  if (b.method === "instant") return ["Instant demo top-up", 200, null];
+  return checkCard(b.card);
+}
+
 export function walletBalance(txs) {
   return Math.round(txs.reduce((s, t) => s + Number(t.amount || 0), 0) * 100) / 100;
 }

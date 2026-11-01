@@ -225,7 +225,7 @@ class Handler(SimpleHTTPRequestHandler):
             amt, err = accounts.parse_amount(body.get("amount"), accounts.MAX_DEPOSIT, "deposit")
             if err:
                 return self._json({"error": err}, 400)
-            method, code, err = accounts.check_card(body.get("card"))
+            method, code, err = accounts.deposit_method(body)
             if err:
                 return self._json({"error": err}, code)
             STORE.add_tx(uid, "deposit", amt, method, "demo deposit")

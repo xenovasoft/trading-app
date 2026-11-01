@@ -24,9 +24,10 @@ Deposits and payouts never touch the trading account, which is why they can
 take effect immediately.
 
 NO REAL MONEY
-Deposits accept only the published demo card number; anything else is
-refused, so a real card number is never collected. Only the last four digits
-are kept. Payouts go to a fixed "demo bank account" and send nothing.
+A deposit is either an instant top-up that asks for no payment details at
+all, or a checkout with the published demo card number. Any other card
+number is refused, so a real one is never collected, and only the last four
+digits are kept. Payouts go to a fixed "demo bank account" and send nothing.
 
 The same rules run in three places: website/api/account.js (production),
 devserver.py (local), and user_cycle() below (the engine). Passwords and
@@ -172,6 +173,14 @@ def check_card(card):
         return None, 400, ("demo mode accepts only the test card "
                            "4242 4242 4242 4242 -- never enter a real card")
     return f"Demo card •••• {digits[-4:]}", 200, None
+
+
+def deposit_method(body):
+    """(method label, http code, error|None). method "instant" adds demo
+    money with no payment details; anything else goes through the card."""
+    if body.get("method") == "instant":
+        return "Instant demo top-up", 200, None
+    return check_card(body.get("card"))
 
 
 def wallet_balance(txs):
