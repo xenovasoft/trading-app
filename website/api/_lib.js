@@ -7,11 +7,11 @@
  * created with `python accounts.py seed --remote` logs in here, and the
  * engine reads the rows these endpoints write.
  *
- * Both endpoints need two secrets in the Vercel project:
- *   SUPABASE_SECRET_KEY  the user tables have RLS on and no policies, so the
- *                        publishable key can read none of them
- *   AUTH_SECRET          32+ random characters; signs the login cookie
- * Without either they answer 501 naming what to set, as paper-control does.
+ * Both endpoints need SUPABASE_SECRET_KEY in the Vercel project: the user
+ * tables have RLS on and no policies, so the publishable key can read none
+ * of them. Without it they answer 501 naming what to set, as paper-control
+ * does. AUTH_SECRET (32+ random characters) optionally sets the key that
+ * signs the login cookie; see config().
  */
 import crypto from "node:crypto";
 
@@ -29,18 +29,19 @@ export const MAX_DEPOSIT = 1000000;
 
 export function config() {
   const key = process.env.SUPABASE_SECRET_KEY;
-  const secret = process.env.AUTH_SECRET;
   if (!key) {
     return {
       error: "SUPABASE_SECRET_KEY not configured",
       detail: "accounts unavailable -- add the Supabase service key as SUPABASE_SECRET_KEY in Vercel project settings",
     };
   }
+  // AUTH_SECRET is optional. Without it the cookie-signing key is derived
+  // from the Supabase secret key, so one variable is enough to turn accounts
+  // on; rotating that key then also logs everyone out, which is the right
+  // outcome anyway.
+  let secret = process.env.AUTH_SECRET;
   if (!secret || secret.length < 32) {
-    return {
-      error: "AUTH_SECRET not configured",
-      detail: "accounts unavailable -- set AUTH_SECRET in Vercel project settings to a random string of 32 or more characters",
-    };
+    secret = crypto.createHmac("sha256", key).update("se-session-v1").digest("base64url");
   }
   return { key, secret };
 }

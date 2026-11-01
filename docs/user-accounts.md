@@ -30,18 +30,16 @@ How it's built is explained at the top of `accounts.py`.
 
 1. **Create the tables.** Supabase → SQL editor → paste
    `user_accounts.sql` → Run.
-2. **Add the session secret.** Vercel → project → Settings → Environment
-   Variables → add `AUTH_SECRET`, set to a random string of 32 or more
-   characters. One way to make one:
-
-   ```bash
-   python3 -c "import secrets; print(secrets.token_urlsafe(32))"
-   ```
-
-   `SUPABASE_SECRET_KEY` must also be set. The shared account's Stop
-   button already needs it.
+2. **Add the Supabase key to Vercel.** Open the project that serves
+   `trading-app-8whr.vercel.app` (there is a second project, `trading-app-jpbs`,
+   built from the same repo; it doesn't serve that address). Go to Settings →
+   Environment Variables and add `SUPABASE_SECRET_KEY` with the Supabase
+   **secret** key (Supabase → Project Settings → API Keys, starts with
+   `sb_secret_`). Tick Production. The shared account's Stop button needs it
+   too. `AUTH_SECRET` is optional: without it the login cookie is signed with
+   a key derived from the Supabase key.
 3. **Redeploy** so the new variable takes effect: push to `main`, or press
-   Redeploy in Vercel.
+   Redeploy on the latest Production deployment in Vercel.
 4. **Make logins.** Either use "Create account" on `/login.html`, or create
    the test users from `test_users.local.json` (gitignored):
 
@@ -51,7 +49,7 @@ How it's built is explained at the top of `accounts.py`.
 
 Before step 1 the engine prints `user accounts unavailable` and keeps
 running the shared account. Before step 2 the login page shows
-"AUTH_SECRET not configured".
+"SUPABASE_SECRET_KEY not configured".
 
 ## Locally
 
