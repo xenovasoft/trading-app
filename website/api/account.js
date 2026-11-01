@@ -149,7 +149,7 @@ async function act(key, user, cur, b) {
     await setRequest(key, uid, "disarm");
     return [200, {
       ok: true,
-      detail: "trading will stop on the next engine cycle (within 15 minutes), and the balance goes back to your wallet",
+      detail: "trading will stop on the next engine cycle (within 15 minutes): open orders close at the market price and the balance goes back to your wallet",
     }];
   }
 

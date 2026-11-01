@@ -235,6 +235,7 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
           <dt>Worst dip</dt><dd id="k-dd">—</dd>
         </dl>
         <div class="msg" id="stopnote"></div>
+        <p class="hint" id="modenote" hidden></p>
       </div>
 
       <form class="box" id="newacct" autocomplete="off">
@@ -391,6 +392,10 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
     return Math.round(s / 3600) + "h ago";
   }
   function isLong(o) { return o.direction === "LONG"; }
+  // STOP is a user account's open orders being closed at market by Stop.
+  var WHY = { SL: "stop loss", TP: "take profit", TIME: "time limit", STOP: "closed at Stop" };
+  var DEMO_RULE = "Active demo: opens a first order with the trend on each market, then buys or sells when the 9- and 21-candle averages cross on 5-minute charts. " +
+    "Stop 1.5x the recent range (ATR), target 2x the stop, closes after 4 hours. For testing, not the signal engine.";
   function feeRate() { return (state.paper && state.paper.account && state.paper.account.fee_rate) || 0.0004; }
   // Floating P&L exactly as step() will realise it if the order closed now:
   // per-unit move minus the full round-turn fee, times units. Using the same
@@ -641,6 +646,8 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
       ? "Pretend money only. The bot places and closes every order itself, risking 1% of the balance per order. Stopping moves the account's balance back to your wallet."
       : "Pretend money only. The bot places and closes every order itself, risking 1% of the balance per order. 1× means no borrowing: total open orders can never exceed the balance. Nothing reaches a real broker.";
     $("loginhint").hidden = !!state.user || isTest();
+    $("modenote").hidden = !mine;
+    $("modenote").textContent = mine ? (p.rule || DEMO_RULE) + " Runs until you press Stop, which closes open orders at the current price." : "";
     renderWallet();
     var tn = $("testnote");
     if (isTest() && p.test) {
@@ -709,7 +716,9 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
     // ---- Trade tab (open positions)
     $("c-trade").textContent = String(acct.open_orders.length);
     if (!acct.open_orders.length) {
-      $("p-trade").innerHTML = '<div class="empty">No open orders. The bot opens one when a setup scores 65 or more.</div>';
+      $("p-trade").innerHTML = mine
+        ? '<div class="empty">No open orders right now. The demo opens one when the 5-minute averages cross on BTC, gold or silver.</div>'
+        : '<div class="empty">No open orders. The bot opens one when a setup scores 65 or more.</div>';
     } else {
       var rows = acct.open_orders.map(function (o) {
         var last = state.last[o.asset], f = floating(o, last);
@@ -736,13 +745,13 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
       $("p-hist").innerHTML = '<div class="empty">No closed orders yet.</div>';
     } else {
       var hr = hist.map(function (o) {
-        var why = { SL: "stop loss", TP: "take profit", TIME: "time limit" }[o.exit_reason] || o.exit_reason;
+        var why = WHY[o.exit_reason] || o.exit_reason;
         return "<tr><td>" + o.asset + "</td><td>" + fmtTime(o.exit_time) + "</td><td><span class='type " + (isLong(o) ? "buy'>BUY" : "sell'>SELL") + "</span> <span class='mut'>" + o.profile + "</span></td>" +
           "<td>" + Number(o.units).toFixed(4) + "</td><td>" + px(o.entry, o.asset) + "</td><td>" + px(o.exit, o.asset) + "</td><td class='mut' style='font-family:var(--sans)'>" + why + "</td>" +
           "<td>" + (o.r_multiple != null ? (o.r_multiple >= 0 ? "+" : "") + o.r_multiple.toFixed(2) + "R" : "—") + "</td><td class='" + cls(o.pnl_usd) + "'>" + money(o.pnl_usd, true) + "</td><td>" + money(o.balance_after) + "</td></tr>";
       }).join("");
       var hcards = hist.map(function (o) {
-        var why = { SL: "stop loss", TP: "take profit", TIME: "time limit" }[o.exit_reason] || o.exit_reason;
+        var why = WHY[o.exit_reason] || o.exit_reason;
         var r = o.r_multiple != null ? (o.r_multiple >= 0 ? "+" : "") + o.r_multiple.toFixed(2) + "R" : "—";
         return "<li><span class='ct'><span class='type " + (isLong(o) ? "buy'>BUY" : "sell'>SELL") + "</span> " + o.asset + " <span class='mut'>" + o.profile + "</span></span>" +
           "<span class='cp " + cls(o.pnl_usd) + "'>" + money(o.pnl_usd, true) + "</span>" +
@@ -759,7 +768,7 @@ tfoot td{color:var(--dim); font-weight:650; border-bottom:0}
     var ev = [];
     acct.closed_orders.forEach(function (o) {
       ev.push({ t: o.entry_time, s: (isLong(o) ? "Opened BUY " : "Opened SELL ") + Number(o.units).toFixed(4) + " " + o.asset + " at " + px(o.entry, o.asset) + ", stop " + px(o.stop, o.asset) + ", target " + px(o.target, o.asset) });
-      ev.push({ t: o.exit_time, s: "Closed " + o.asset + " at " + px(o.exit, o.asset) + " (" + ({ SL: "stop loss", TP: "take profit", TIME: "time limit" }[o.exit_reason] || o.exit_reason) + "), " + money(o.pnl_usd, true) + ", balance " + money(o.balance_after) });
+      ev.push({ t: o.exit_time, s: "Closed " + o.asset + " at " + px(o.exit, o.asset) + " (" + (WHY[o.exit_reason] || o.exit_reason) + "), " + money(o.pnl_usd, true) + ", balance " + money(o.balance_after) });
     });
     acct.open_orders.forEach(function (o) {
       ev.push({ t: o.entry_time, s: (isLong(o) ? "Opened BUY " : "Opened SELL ") + Number(o.units).toFixed(4) + " " + o.asset + " at " + px(o.entry, o.asset) + " (still open)" });

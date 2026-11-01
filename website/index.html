@@ -1175,7 +1175,7 @@ pollTickers();setInterval(pollTickers,2000);
     if(recent.length){
       html+='<span class="plab2">Recently closed</span>';
       recent.forEach(function(o){
-        var why={SL:"stop loss",TP:"take profit",TIME:"time limit"}[o.exit_reason]||o.exit_reason;
+        var why={SL:"stop loss",TP:"take profit",TIME:"time limit",STOP:"closed at Stop"}[o.exit_reason]||o.exit_reason;
         html+='<div class="porder"><span class="ot"><span class="ptype '+(o.direction==="LONG"?"buy\">BUY":"sell\">SELL")+'</span> '+o.asset+'</span>'+
           '<span class="op '+cls(o.pnl_usd)+'">'+money(o.pnl_usd,true)+'</span>'+
           '<span class="od">'+px(o.entry)+' → '+px(o.exit)+' · '+why+'</span></div>';

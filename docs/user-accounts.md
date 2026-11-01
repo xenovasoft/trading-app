@@ -9,9 +9,18 @@ server, so it looks the same on every page, tab and device, and in the iOS app.
   account. All of these happen immediately.
 - **Start trading:** moves money from the wallet into a trading account.
   The engine opens it on its next cycle, within 15 minutes.
-- **Stop:** the engine closes the account on its next cycle and puts its
-  balance back in the wallet. A start that hasn't been picked up yet can be
-  cancelled, and the money comes back immediately.
+- **What it trades:** the active demo strategy in `demotrader.py`, on live
+  5-minute candles for BTC, gold and silver. It buys or sells when the 9-
+  and 21-candle averages cross. The stop is 1.5x ATR, never closer than 3x
+  costs, and the target is 2x the stop. An order closes after 4 hours if
+  neither is hit. It's for testing the product, not the signal engine; the
+  shared account still trades only real setups.
+- **Never stops by itself:** no drawdown, trade-count or age limit. It runs
+  until the user presses Stop.
+- **Stop:** on its next cycle the engine closes every open order at the
+  market price and puts the balance back in the wallet. A start that
+  hasn't been picked up yet can be cancelled, and the money comes back
+  immediately.
 
 The shared demo account is still there as "Shared demo (everyone)".
 
@@ -53,7 +62,14 @@ python devserver.py
 The server creates every user listed in `test_users.local.json` in
 `accounts.local.json` (gitignored). Then log in at
 `http://localhost:8934/login.html`. Locally, Start and Stop take effect
-immediately, the same as the shared account's buttons do on this server.
+immediately, and the server itself steps every running account on live
+candles once a minute.
+
+In production, user accounts move only when the engine runs. GitHub's own
+schedule fires a few times a day, so set up the outside timer in
+`docs/engine-timer.md` for a check every 15 minutes. Late runs still put
+every order at the right candle, because each run replays the candles it
+missed (up to about 60 hours of them).
 
 To add another local user:
 

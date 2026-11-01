@@ -29,10 +29,13 @@ import http.cookies
 import json
 import os
 import random
+import threading
+import time
 import urllib.parse
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 import accounts
+import demotrader
 import papertrader
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -217,6 +220,14 @@ class Handler(SimpleHTTPRequestHandler):
                           headers=self._session_cookie(token, accounts.SESSION_DAYS * 86400))
 
     def _account_post(self, user, body):
+        # Stop closes open orders at the latest price, so fetch prices before
+        # taking the lock: the demo loop shouldn't wait on the network. The
+        # lock makes each action one read-modify-write against that loop.
+        bars = demo_bars() if body.get("action") == "stop" else None
+        with STORE.lock:
+            return self._account_act(user, body, bars)
+
+    def _account_act(self, user, body, bars):
         uid, action = user["id"], body.get("action")
         state, req = STORE.get(uid)
         bal = accounts.wallet_balance(STORE.txs(uid))
@@ -255,21 +266,23 @@ class Handler(SimpleHTTPRequestHandler):
             if not 1 <= lev <= 10:
                 return self._json({"error": "leverage must be between 1 and 10"}, 400)
             STORE.add_tx(uid, "allocate", -amt, "Trading account", f"started at {lev:g}x")
-            STORE.put(uid, papertrader.new_session(
-                None, note=f"started by {user['username']}", balance=amt, max_leverage=lev))
-            return self._json({"ok": True, "detail": f"trading started with ${amt:,.2f} at {lev:g}x "
-                                                      "(immediate locally; in production it starts "
-                                                      "on the next engine cycle)"})
+            STORE.put(uid, accounts.new_demo_session(amt, lev, note=f"started by {user['username']}"))
+            return self._json({"ok": True, "detail": f"trading started with ${amt:,.2f} at {lev:g}x; "
+                                                      "the demo checks the market every minute here "
+                                                      "(every engine cycle in production)"})
 
         if action == "stop":
             if state.get("status") != papertrader.ARMED:
                 return self._json({"error": "your account isn't running"}, 409)
-            st, amt = accounts.settle(accounts.stop(state, "stopped by you"))
+            n_open = len(state.get("open") or {})
+            st, amt = accounts.settle(accounts.stop_and_close(state, bars or {}, "stopped by you"))
             if amt is not None:
                 STORE.add_tx(uid, "return", amt, "Trading account", "stopped by you",
                              accounts.settle_ref(uid, state))
             STORE.put(uid, st)
-            return self._json({"ok": True, "detail": f"trading stopped; ${amt or 0:,.2f} returned to your wallet"})
+            closed = f"{n_open} open order(s) closed at the current price; " if n_open else ""
+            return self._json({"ok": True, "detail": f"trading stopped; {closed}"
+                                                      f"${amt or 0:,.2f} returned to your wallet"})
 
         return self._json({"error": "action must be deposit, payout, start or stop"}, 400)
 
@@ -391,6 +404,42 @@ class Handler(SimpleHTTPRequestHandler):
             super().log_message(fmt, *args)
 
 
+def demo_bars():
+    """Live 5-minute candles for every demo asset, from the same sources as
+    /api/candles. An asset whose feed fails is left out for this round."""
+    out = {}
+    for asset in demotrader.ASSETS:
+        try:
+            out[asset] = fetch_candles(asset, "5m")
+        except Exception as e:
+            print(f"demo: no {asset} candles: {e}", flush=True)
+    return out
+
+
+def demo_loop(interval=60):
+    """Locally this server is the engine for user accounts: every minute it
+    steps each running account on live candles. Production does the same
+    from run_check_v2 on the engine's schedule."""
+    while True:
+        try:
+            running = [uid for uid, row in list(STORE.db["paper"].items())
+                       if (row.get("state") or {}).get("status") == papertrader.ARMED]
+            if running:
+                bars = demo_bars()
+                with STORE.lock:
+                    for uid in running:
+                        state, req = STORE.get(uid)
+                        if state.get("status") != papertrader.ARMED:
+                            continue
+                        state, events = demotrader.step(state, bars)
+                        STORE.put(uid, state, req)
+                        for e in events:
+                            print(f"demo user {uid}: {e}", flush=True)
+        except Exception as e:
+            print(f"demo loop failed: {e}", flush=True)
+        time.sleep(interval)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8934)
@@ -415,6 +464,7 @@ def main():
     if not (SUPA_URL and SUPA_KEY):
         print("note: no SUPABASE_URL/key in env, so signal data is empty -- "
               "the paper panel still works")
+    threading.Thread(target=demo_loop, daemon=True).start()
     ThreadingHTTPServer(("127.0.0.1", a.port), Handler).serve_forever()
 
 

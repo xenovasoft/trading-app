@@ -53,6 +53,7 @@ import sys
 import threading
 import time
 
+import demotrader
 import papertrader
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -214,6 +215,22 @@ def blank_state():
             "last_step": None}
 
 
+def new_demo_session(balance, leverage, note=""):
+    """A user's trading account: the active demo strategy (demotrader), which
+    runs until the user stops it."""
+    st = papertrader.new_session(None, note=note, balance=balance, max_leverage=leverage)
+    st["mode"] = "demo"
+    return st
+
+
+def stop_and_close(state, bars_by_asset, reason):
+    """Catch the account up to now, close every open order at the latest
+    price, and stop it. What Stop means for a user account."""
+    st, _ = demotrader.step(state, bars_by_asset)
+    st, _ = demotrader.close_all(st, demotrader.last_prices(bars_by_asset))
+    return stop(st, reason)
+
+
 def stop(state, reason):
     st = dict(state)
     if st.get("status") != papertrader.STOPPED:
@@ -225,9 +242,9 @@ def stop(state, reason):
 
 def settle(state):
     """(state, amount|None): the balance to hand back to the wallet if this
-    session has ended and hasn't been paid back yet. Covers every way a
-    session ends -- Stop, a replacement, and the engine's own auto-stops
-    (drawdown, sample size, age, stale feed)."""
+    session has ended and hasn't been paid back yet. User accounts end only
+    by Stop or replacement; checking every stopped state keeps that true
+    even if another way of ending one is added later."""
     acct = state.get("account")
     if state.get("status") != papertrader.STOPPED or not acct or state.get("settled_at"):
         return state, None
@@ -245,10 +262,20 @@ def settle_ref(user_id, state):
 def user_snapshot(state, requested):
     """What /api/account returns as `paper`: the same shape as /api/paper,
     so the terminal renders a user's account with the code it already has."""
-    snap = papertrader.snapshot(state)
+    snap = dict(_snapshot(state), pending_request=requested or None)
     if state.get("status") == papertrader.DISARMED and not state.get("trades"):
         snap["never_run"] = True
-    snap["pending_request"] = requested or None
+    return snap
+
+
+def _snapshot(state):
+    """papertrader.snapshot() plus what a user account adds: its strategy,
+    the money paid back on stop, and a longer order history (the demo trades
+    far more often than the shared account's 25-order window was sized for)."""
+    snap = papertrader.snapshot(state)
+    snap["account"] = papertrader.account_snapshot(state, max_closed=100)
+    snap["mode"] = state.get("mode")
+    snap["rule"] = demotrader.RULE if state.get("mode") == "demo" else None
     snap["settled_usd"] = state.get("settled_usd")
     return snap
 
@@ -364,8 +391,7 @@ def push_user(user_id, state):
         return False
     requests, headers = h
     row = {"user_id": user_id,
-           "payload": {**papertrader.snapshot(state),
-                       "settled_usd": state.get("settled_usd"), "_state": state},
+           "payload": {**_snapshot(state), "_state": state},
            "updated_at": _now_iso()}
     hh = dict(headers, Prefer="resolution=merge-duplicates")
     r = requests.post(f"{url}/rest/v1/{USER_TABLE}", json=[row], headers=hh, timeout=15)
@@ -417,26 +443,29 @@ def _settle_remote(user_id, state):
 
 def user_cycle(signals, frames_by_asset):
     """Step every user's account by one engine cycle. Called from
-    run_check_v2.paper_cycle() after the shared account. One user's failure
-    never stops the others."""
+    run_check_v2.paper_cycle() after the shared account. User accounts run
+    the active demo strategy on the engine's own 5M bars, never stop by
+    themselves, and one user's failure never stops the others."""
+    bars = demotrader.frames_to_bars(frames_by_asset)
     for row in pull_user_rows():
         uid = row.get("user_id")
         try:
             req = row.get("requested")
             state = (row.get("payload") or {}).get("_state") or blank_state()
-            if (req and req.split(":", 1)[0] == "arm"
-                    and state.get("status") == papertrader.ARMED):
-                # The website refuses Start while an account runs; this is
-                # the backstop, so a replaced account's money isn't lost.
-                state = _settle_remote(uid, stop(state, "replaced by a new account"))
-            if req:
-                state, note = papertrader.apply_intent(state, req, source="user")
-                if note:
-                    print(f"  user {uid}: {note}")
-            state, events = papertrader.step(state, signals, frames_by_asset)
+            running = state.get("status") == papertrader.ARMED
+            if req and running:
+                # Stop, or a new start replacing a running account (the
+                # website refuses that; this is the backstop): close its
+                # orders at the latest price and pay its balance back.
+                why = "stopped by you" if req == "disarm" else "replaced by a new account"
+                state = _settle_remote(uid, stop_and_close(state, bars, why))
+            if req and req.split(":", 1)[0] == "arm":
+                bal, lev = papertrader.parse_arm(req)
+                state = new_demo_session(bal, lev, note="started from website")
+                print(f"  user {uid}: started demo with ${bal:,.2f} at {lev:g}x")
+            state, events = demotrader.step(state, bars)
             for e in events:
-                if not e.startswith("session "):
-                    print(f"  user {uid}: {e}")
+                print(f"  user {uid}: {e}")
             state = _settle_remote(uid, state)
             if push_user(uid, state) and req:
                 clear_request(uid, req)
